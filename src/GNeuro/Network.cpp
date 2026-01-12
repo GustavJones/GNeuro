@@ -5,8 +5,6 @@
 #include "GNeuro/Random.hpp"
 #include "GNeuro/Type.hpp"
 #include "GParsing/JSON/GParsing-JSON.hpp"
-#include "GParsing/JSON/JSONArray.hpp"
-#include "GParsing/JSON/JSONString.hpp"
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -223,7 +221,8 @@ void Network::Mutate(const MUTATE_CALLBACK_T _callback) {
     originalValue = neuron.GetBias();
     neuron.SetBias(originalValue + mutateAmount);
 
-    DECIMAL_T reward = _callback();
+    DECIMAL_T reward = _callback(*this);
+
     neuron.SetBias(originalValue + (mutateAmount * reward));
   } else {
     const size_t weightIndex = attributeIndex - 1;
@@ -231,7 +230,8 @@ void Network::Mutate(const MUTATE_CALLBACK_T _callback) {
     originalValue = neuron.GetWeight(weightIndex);
     neuron.SetWeight(weightIndex, originalValue + mutateAmount);
 
-    DECIMAL_T reward = _callback();
+    DECIMAL_T reward = _callback(*this); neuron.SetWeight(weightIndex, originalValue + (mutateAmount * reward));
+
     neuron.SetWeight(weightIndex, originalValue + (mutateAmount * reward));
   }
 }
