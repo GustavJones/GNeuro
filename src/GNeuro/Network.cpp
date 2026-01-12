@@ -1,6 +1,12 @@
 #include "GNeuro/Network.hpp"
+#include "GNeuro/Activation.hpp"
+#include "GNeuro/Layer.hpp"
+#include "GNeuro/Loss.hpp"
 #include "GNeuro/Random.hpp"
 #include "GNeuro/Type.hpp"
+#include "GParsing/JSON/GParsing-JSON.hpp"
+#include "GParsing/JSON/JSONArray.hpp"
+#include "GParsing/JSON/JSONString.hpp"
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -8,6 +14,178 @@
 #include <vector>
 
 namespace GNeuro {
+void Network::SaveModel(const std::string &_filepath) const {
+  GParsing::JSONObject<unsigned char> json;
+
+  GParsing::JSONObject<unsigned char> metadataObject;
+  metadataObject.AddMember("version", GParsing::JSONString<unsigned char>("v1"));
+
+  json.AddMember("metadata", metadataObject);
+
+  GParsing::JSONValue<unsigned char> lossValue;
+  bool found = false;
+  for (size_t __lossIndex = 0; __lossIndex < LossFunctions.size(); __lossIndex++) {
+    if (m_loss == LossFunctions[__lossIndex].second) {
+      lossValue.SetString(LossFunctions[__lossIndex].first);
+      found = true;
+    }
+  }
+
+  if (!found) {
+    throw std::runtime_error("Cannot serialize loss function.");
+  }
+
+  GParsing::JSONArray<unsigned char> weightsArray;
+  for (size_t __layerIndex = 0; __layerIndex < GetLayersCount(); __layerIndex++) {
+    const auto &layer = operator[](__layerIndex);
+    GParsing::JSONArray<unsigned char> layerJSON;
+
+    for (size_t __neuronIndex = 0; __neuronIndex < layer.GetSize(); __neuronIndex++) {
+      const auto &neuron = layer[__neuronIndex];
+      GParsing::JSONArray<unsigned char> neuronJSON;
+
+      for (size_t __weightIndex = 0; __weightIndex < neuron.GetInputsCount(); __weightIndex++) {
+        const auto weight = neuron.GetWeight(__weightIndex);
+        neuronJSON.PushValue(GParsing::JSONNumber<unsigned char>(weight));
+      }
+
+      layerJSON.PushValue(neuronJSON);
+    }
+
+    weightsArray.PushValue(layerJSON);
+  }
+
+  GParsing::JSONArray<unsigned char> biasesArray;
+  for (size_t __layerIndex = 0; __layerIndex < GetLayersCount(); __layerIndex++) {
+    const auto &layer = operator[](__layerIndex);
+    GParsing::JSONArray<unsigned char> layerJSON;
+
+    for (size_t __neuronIndex = 0; __neuronIndex < layer.GetSize(); __neuronIndex++) {
+      const auto &neuron = layer[__neuronIndex];
+      layerJSON.PushValue(GParsing::JSONNumber<unsigned char>(neuron.GetBias()));
+    }
+
+    biasesArray.PushValue(layerJSON);
+  }
+
+  GParsing::JSONArray<unsigned char> activationsArray;
+  for (size_t __layerIndex = 0; __layerIndex < GetLayersCount(); __layerIndex++) {
+    const auto &layer = operator[](__layerIndex);
+    GParsing::JSONArray<unsigned char> layerJSON;
+
+    for (size_t __neuronIndex = 0; __neuronIndex < layer.GetSize(); __neuronIndex++) {
+      const auto &neuron = layer[__neuronIndex];
+
+      bool found = false;
+      for (size_t __activationIndex = 0; __activationIndex < ActivationFunctions.size(); __activationIndex++) {
+        if (neuron.GetActivation() == ActivationFunctions[__activationIndex].second) {
+          layerJSON.PushValue(GParsing::JSONString<unsigned char>(ActivationFunctions[__activationIndex].first));
+          found = true;
+        }
+      }
+
+      if (!found) {
+        throw std::runtime_error("Unknown activation function. Cannot serialize string.");
+      }
+    }
+
+    activationsArray.PushValue(layerJSON);
+  }
+
+  json.AddMember("loss", lossValue);
+  json.AddMember("weights", weightsArray);
+  json.AddMember("biases", biasesArray);
+  json.AddMember("activations", activationsArray);
+
+  if (!json.Serialize(_filepath)) {
+    throw std::runtime_error("Cannot serialze JSON."); 
+  }
+}
+
+void Network::LoadModel(const std::string &_filepath) {
+  GParsing::JSONObject<unsigned char> json;
+  if (!json.Parse(_filepath)) {
+    throw std::runtime_error("Unable to parse JSON model.");
+  }
+
+  const auto &metadataObject = json["metadata"].GetObject();
+  const auto &versionString = metadataObject["version"].GetString();
+
+  if (versionString != "v1") {
+    throw std::runtime_error("Unknown model version.");
+  }
+
+  const auto lossString = json["loss"].GetString();
+  bool found = false;
+  for (size_t __lossIndex = 0; __lossIndex < LossFunctions.size(); __lossIndex++) {
+    if (lossString == LossFunctions[__lossIndex].first) {
+      m_loss = LossFunctions[__lossIndex].second;
+      found = true;
+    }
+  }
+
+  if (!found) {
+    throw std::runtime_error("Cannot parse loss function string.");
+  }
+
+  ClearLayers();
+
+  const auto &weights = json["weights"].GetArray();
+  for (size_t __layerIndex = 0; __layerIndex < weights.GetSize(); __layerIndex++) {
+    auto &jsonLayer = weights[__layerIndex].GetArray();
+    auto &layer = m_layers.emplace_back(jsonLayer.GetSize());
+
+    for (size_t __neuronIndex = 0; __neuronIndex < jsonLayer.GetSize(); __neuronIndex++) {
+      auto &jsonNeuron = jsonLayer[__neuronIndex].GetArray();
+      auto &neuron = layer[__neuronIndex];
+
+      neuron.SetInputsCount(jsonNeuron.GetSize());
+
+      for (size_t __weightIndex = 0; __weightIndex < jsonNeuron.GetSize(); __weightIndex++) {
+        DECIMAL_T jsonWeight = jsonNeuron.GetValue(__weightIndex).GetNumber();
+        neuron.SetWeight(__weightIndex, jsonWeight);
+      }
+    }
+  }
+
+  const auto &biases = json["biases"].GetArray();
+  for (size_t __layerIndex = 0; __layerIndex < biases.GetSize(); __layerIndex++) {
+    auto &jsonLayer = biases[__layerIndex].GetArray();
+    auto &layer = m_layers[__layerIndex];
+
+    for (size_t __neuronIndex = 0; __neuronIndex < jsonLayer.GetSize(); __neuronIndex++) {
+      auto jsonBias = jsonLayer[__neuronIndex].GetNumber();
+      auto &neuron = layer[__neuronIndex];
+
+      neuron.SetBias(jsonBias);
+    }
+  }
+
+
+  const auto &activation = json["activations"].GetArray();
+  for (size_t __layerIndex = 0; __layerIndex < activation.GetSize(); __layerIndex++) {
+    auto &jsonLayer = activation[__layerIndex].GetArray();
+    auto &layer = m_layers[__layerIndex];
+
+    for (size_t __neuronIndex = 0; __neuronIndex < jsonLayer.GetSize(); __neuronIndex++) {
+      auto jsonActivationString = jsonLayer[__neuronIndex].GetString();
+      auto &neuron = layer[__neuronIndex];
+
+      bool found = false;
+      for (size_t __activationIndex = 0; __activationIndex < ActivationFunctions.size(); __activationIndex++) {
+        if (jsonActivationString == ActivationFunctions[__activationIndex].first) {
+          neuron.SetActivation(ActivationFunctions[__activationIndex].second);
+          found = true;
+        }
+      }
+
+      if (!found) {
+        throw std::runtime_error("Could not parse activation function string.");
+      }
+    }
+  }
+}
+
 std::vector<DECIMAL_T> Network::Calculate(const std::vector<DECIMAL_T> &_inputs) {  
   std::vector<std::vector<DECIMAL_T>> activatedStructure, unactivatedStructure;
   _CalculateOutputStructures(_inputs, activatedStructure, unactivatedStructure);

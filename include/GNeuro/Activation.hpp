@@ -1,5 +1,8 @@
 #pragma once
 #include "GNeuro/Type.hpp"
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace GNeuro {
 inline DECIMAL_T None(DECIMAL_T _in, bool _derived) {
@@ -44,4 +47,11 @@ inline DECIMAL_T TanH(DECIMAL_T _in, bool _derived) {
   }
 }
 
+static const std::vector<std::pair<std::string, ACTIVATION_T>> ActivationFunctions = {
+  {"None", None},
+  {"Sigmoid", Sigmoid},
+  {"ReLu", ReLu},
+  {"LeakyReLu", LeakyReLu},
+  {"TanH", TanH}
+};
 } // namespace GNeuro

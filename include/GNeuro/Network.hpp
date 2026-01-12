@@ -1,6 +1,7 @@
 #pragma once
 #include "GNeuro/Type.hpp"
 #include "Layer.hpp"
+#include <string>
 #include <vector>
 
 namespace GNeuro {
@@ -15,6 +16,9 @@ public:
 
   void SetLoss(const LOSS_T _loss) { m_loss = _loss; }
   const LOSS_T GetLoss() const { return m_loss; }
+
+  void SaveModel(const std::string &_filepath) const;
+  void LoadModel(const std::string &_filepath);
 
   [[nodiscard]]
   std::vector<DECIMAL_T> Calculate(const std::vector<DECIMAL_T> &_inputs);

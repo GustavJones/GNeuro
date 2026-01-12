@@ -1,3 +1,4 @@
+#include <iostream>
 #include <vector>
 #include "GNeuro/GNeuro.hpp"
 
@@ -21,16 +22,25 @@ GNeuro::DECIMAL_T Callback() {
 
 int main(int argc, char *argv[]) {
   GNeuro::Network network;
-  network.SetLoss(GNeuro::SquaredError);
+  try {
+    network.LoadModel("model.json");
+  }
+  catch (const std::exception &e) {
+    network.SetLoss(GNeuro::SquaredError);
 
-  network.AddLayer(GNeuro::Layer(3), GNeuro::LeakyReLu);
-  network.AddLayer(GNeuro::Layer(3), GNeuro::TanH);
-  network.AddLayer(GNeuro::Layer(1), GNeuro::Sigmoid);
+    network.AddLayer(GNeuro::Layer(2), GNeuro::Sigmoid);
+    network.AddLayer(GNeuro::Layer(1), GNeuro::Sigmoid);
 
-  network.FitLayers(2);
+    network.FitLayers(2);
 
-  network.Randomize();
-  network.Train(inputs, expectedOutputs, 0.01, 0.0001);
+    network.Randomize();
+    network.Train(inputs, expectedOutputs, 0.01, 0.001);
+  }  
+
+  auto output = network.Calculate(inputs[0]);
+  std::cout << output[0] << std::endl;
+
+  network.SaveModel("model.json");
 
   return 0;
 }
