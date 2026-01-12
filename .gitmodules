@@ -1,0 +1,3 @@
+[submodule "GParsing"]
+	path = external/GParsing
+	url = https://github.com/GustavJones/GParsing.git

@@ -1,0 +1,16 @@
+file(GLOB Components "src/*")
+
+foreach(Component ${Components})
+  if(IS_DIRECTORY ${Component})
+    if(EXISTS "${Component}/CMakeLists.txt")
+      message(STATUS "Adding project: ${Component}")
+      add_subdirectory(${Component})
+    endif()
+
+    file(GLOB INCLUDES "${Component}/*.cmake")
+    foreach(INCLUDE ${INCLUDES})
+      message(STATUS "Adding include: ${INCLUDE}")
+      include(${INCLUDE})
+    endforeach()
+  endif()
+endforeach()
