@@ -17,6 +17,7 @@ void Network::SaveModel(const std::string &_filepath) const {
 
   GParsing::JSONObject<unsigned char> metadataObject;
   metadataObject.AddMember("version", GParsing::JSONString<unsigned char>("v1"));
+  metadataObject.AddMember("type", GParsing::JSONString<unsigned char>("model"));
 
   json.AddMember("metadata", metadataObject);
 
@@ -108,6 +109,11 @@ void Network::LoadModel(const std::string &_filepath) {
 
   const auto &metadataObject = json["metadata"].GetObject();
   const auto &versionString = metadataObject["version"].GetString();
+  const auto &typeString = metadataObject["type"].GetString();
+
+  if (typeString != "model") {
+    throw std::runtime_error("Unknown JSON type.");
+  }
 
   if (versionString != "v1") {
     throw std::runtime_error("Unknown model version.");
