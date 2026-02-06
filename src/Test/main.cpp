@@ -4,14 +4,14 @@
 
 // Example data for an XOR network
 // Trains a model to produce the output of an XOR operation
-static const std::vector<std::vector<GNeuro::DECIMAL_T>> inputs = {
+static const std::vector<std::vector<double>> inputs = {
   {1, 1},
   {1, 0},
   {0, 1},
   {0, 0},
 };
 
-static const std::vector<std::vector<GNeuro::DECIMAL_T>> expectedOutputs = {
+static const std::vector<std::vector<double>> expectedOutputs = {
   {0},
   {1},
   {1},
@@ -20,7 +20,7 @@ static const std::vector<std::vector<GNeuro::DECIMAL_T>> expectedOutputs = {
 
 int main(int argc, char *argv[]) {
   // Create a network object.
-  GNeuro::Network network;
+  GNeuro::Network<double> network;
 
   try {
     // Try to load a model file if it exists, otherwise create a new model.
@@ -33,8 +33,8 @@ int main(int argc, char *argv[]) {
     network.SetLoss(GNeuro::SquaredError);
 
     // Add neuron layers
-    network.AddLayer(GNeuro::Layer(2), GNeuro::Sigmoid);
-    network.AddLayer(GNeuro::Layer(1), GNeuro::Sigmoid);
+    network.AddLayer(GNeuro::Layer<double>(2), GNeuro::Sigmoid);
+    network.AddLayer(GNeuro::Layer<double>(1), GNeuro::Sigmoid);
 
     // Add layer weights by fitting to model size and input count
     network.FitLayers(2);

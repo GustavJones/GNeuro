@@ -1,11 +1,12 @@
 #pragma once
-#include "GNeuro/Type.hpp"
 #include <string>
-#include <utility>
-#include <vector>
+#include <cmath>
 
 namespace GNeuro {
-inline DECIMAL_T None(DECIMAL_T _in, bool _derived) {
+template<typename value_t>
+inline value_t None(value_t _in, bool _derived, std::string &_funcName) {
+  _funcName = "None";
+
   if (_derived) {
     return 1;
   } else {
@@ -13,15 +14,22 @@ inline DECIMAL_T None(DECIMAL_T _in, bool _derived) {
   }
 }
 
-inline DECIMAL_T Sigmoid(DECIMAL_T _in, bool _derived) {
+template<typename value_t>
+inline value_t Sigmoid(value_t _in, bool _derived, std::string &_funcName) {
+  _funcName = "Sigmoid";
+
+  std::string tmp;
   if (_derived) {
-    return Sigmoid(_in, false) * (1 - Sigmoid(_in, false));
+    return Sigmoid(_in, false, tmp) * (1 - Sigmoid(_in, false, tmp));
   } else {
     return 1 / (1 + std::exp(-_in));
   }
 }
 
-inline DECIMAL_T ReLu(DECIMAL_T _in, bool _derived) {
+template<typename value_t>
+inline value_t ReLu(value_t _in, bool _derived, std::string &_funcName) {
+  _funcName = "ReLu";
+
   if (_derived) {
     return (_in >= 0) ? 1 : 0;
   } else {
@@ -29,8 +37,11 @@ inline DECIMAL_T ReLu(DECIMAL_T _in, bool _derived) {
   }
 }
 
-inline DECIMAL_T LeakyReLu(DECIMAL_T _in, bool _derived) {
-  const DECIMAL_T SLOPE = 0.01;
+template<typename value_t>
+inline value_t LeakyReLu(value_t _in, bool _derived, std::string &_funcName) {
+  _funcName = "LeakyReLu";
+
+  const value_t SLOPE = 0.01;
 
   if (_derived) {
     return (_in >= 0) ? 1 : SLOPE;
@@ -39,19 +50,14 @@ inline DECIMAL_T LeakyReLu(DECIMAL_T _in, bool _derived) {
   }
 }
 
-inline DECIMAL_T TanH(DECIMAL_T _in, bool _derived) {
+template<typename value_t>
+inline value_t TanH(value_t _in, bool _derived, std::string &_funcName) {
+  _funcName = "TanH";
+
   if (_derived) {
     return std::pow(2 / (std::exp(_in) + std::exp(-_in)), 2);
   } else {
     return (std::exp(_in) - std::exp(-_in)) / (std::exp(_in) + std::exp(-_in));
   }
 }
-
-static const std::vector<std::pair<std::string, ACTIVATION_T>> ActivationFunctions = {
-  {"None", None},
-  {"Sigmoid", Sigmoid},
-  {"ReLu", ReLu},
-  {"LeakyReLu", LeakyReLu},
-  {"TanH", TanH}
-};
 } // namespace GNeuro
