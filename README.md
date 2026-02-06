@@ -37,14 +37,10 @@ To use this as a library simply download a copy from this repo and add it to you
 
 - Include and Link the library files to your project:
 
-  Include the library headers with `target_include_directories()` to the `GNeuro/include` directory.
   Link the library code to your executable with `target_link_libraries()` with the library name **GNeuro**.
   [CMake Example](src/Test/CMakeLists.txt)
 
 ## Usage
-
-> [!NOTE]
-> This library uses the `double_t` type from the `cmath` include as the numerical type. If you need another type it can be changed from [this](include/GNeuro/Type.hpp) file.
 
 > [!NOTE]
 > An example can be seen in the [Test](src/Test)  source project included in this library.
