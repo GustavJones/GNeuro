@@ -7,7 +7,7 @@ add_library(GNeuro INTERFACE)
 target_include_directories(GNeuro INTERFACE
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/external/GParsing/include/"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/GMath/include/"
+  # "${CMAKE_CURRENT_SOURCE_DIR}/external/GMath/include/"
 )
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
