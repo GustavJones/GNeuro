@@ -45,7 +45,7 @@ private:
     GNeuro::SquaredNegativeError
   };
 public:
-  Network() : m_layers(0), m_loss(nullptr) {};
+  Network() = default;
   Network(Network &&) = default;
   Network(const Network &) = default;
   Network &operator=(Network &&) = default;

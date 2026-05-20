@@ -15,8 +15,12 @@ namespace GNeuro {
   class Neuron {
   private:
     typedef value_t (*activation_t)(value_t _in, bool _derived, std::string &_funcName);
+
+    std::vector<value_t> m_weights;
+    value_t m_bias = 0;
+    activation_t m_activation = nullptr;
   public:
-    Neuron() : m_bias(0), m_weights(0), m_activation(nullptr) {};
+    Neuron() = default;
     Neuron(Neuron &&_n) = default;
     Neuron(const Neuron &_n) = default;
     Neuron &operator=(Neuron &&_n) = default;
@@ -62,9 +66,5 @@ namespace GNeuro {
      * Set the activation function of the neuron.
      */
     void SetActivation(const activation_t _activation) { m_activation = _activation; }
-  private:
-    std::vector<value_t> m_weights;
-    value_t m_bias;
-    activation_t m_activation;
   };
 }
