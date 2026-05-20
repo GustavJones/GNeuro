@@ -1,3 +1,7 @@
+/*
+ * This file includes the GNeuro::Network class.
+ */
+
 #pragma once
 #include "GNeuro/Layer.hpp"
 #include "GParsing/JSON/GParsing-JSON.hpp"
@@ -10,6 +14,11 @@
 
 namespace GNeuro {
 
+/*
+ * An object to create a Neural Network. Uses different GNeuro::Layers to define
+ * a network that can be created, trained, used for calculations, cleared, saved
+ * and loaded.
+ */
 template <typename value_t> class Network {
 private:
   typedef value_t (*activation_t)(value_t _in, bool _derived, std::string &_funcName);
@@ -18,6 +27,8 @@ private:
 
   std::vector<Layer<value_t>> m_layers;
   loss_t m_loss = nullptr;
+
+  // Default activation functions provided by GNeuro.
   std::vector<activation_t> m_activationFunctions {
     GNeuro::None,
     GNeuro::Sigmoid,
@@ -26,6 +37,7 @@ private:
     GNeuro::TanH
   };
 
+  // Default loss functions provided by GNeuro.
   std::vector<loss_t> m_lossFunctions {
     GNeuro::Error,
     GNeuro::NegativeError,
@@ -40,25 +52,49 @@ public:
   Network &operator=(const Network &) = default;
   ~Network() = default;
 
+  /*
+   * Set the loss function used for training and loss calculation.
+   */
   void SetLoss(const loss_t _loss) { m_loss = _loss; }
+
+  /*
+   * Get the loss function used for training and loss calculation.
+   */
   const loss_t GetLoss() const { return m_loss; }
 
+  /*
+   * Add activation function to internal activation function list.
+   * Used for when non-default activation functions need to be used.
+   */
   void AddActivationFunction(activation_t _activationFunction) {
     m_activationFunctions.push_back(_activationFunction);
   }
 
+  /*
+   * Add loss function to internal activation function list.
+   * Used for when non-default loss functions need to be used.
+   */
   void AddLossFunction(loss_t _lossFunction) {
     m_lossFunctions.push_back(_lossFunction);
   }
 
+  /*
+   * Get internal activation function list.
+   */
   const std::vector<activation_t> &GetActivationFunctionList() const {
     return m_activationFunctions;
   }
 
+  /*
+   * Get internal loss function list.
+   */
   const std::vector<loss_t> &GetLossFunctionList() const {
     return m_lossFunctions;
   }
 
+  /*
+   * Save the model to a JSON style model file.
+   */
   void SaveModel(const std::string &_filepath) const {
     GParsing::JSONObject<unsigned char> json;
 
@@ -154,6 +190,9 @@ public:
     }
   }
 
+  /*
+   * Load the model from a JSON style model file.
+   */
   void LoadModel(const std::string &_filepath) {
     GParsing::JSONObject<unsigned char> json;
     if (!json.Parse(_filepath)) {
@@ -249,6 +288,10 @@ public:
     }
   };
 
+  /*
+   * Calculate the outputs from the output neurons.
+   * Use the _inputs to run through the entire network.
+   */
   [[nodiscard]]
   std::vector<value_t> Calculate(const std::vector<value_t> &_inputs) {
     std::vector<std::vector<value_t>> activatedStructure,
@@ -258,6 +301,11 @@ public:
     return activatedStructure.back();
   };
 
+  /*
+   * Continuously train the network on a collection of input and expected output
+   * values until a certain loss threshold is reached.
+   * Use _learningRate to adjust the model weights and biases.
+   */
   void Train(const std::vector<std::vector<value_t>> &_inputsBatch,
              const std::vector<std::vector<value_t>> &_expectedOutputsBatch,
              const value_t _learningRate, const value_t _lossThreshold) {
@@ -279,6 +327,13 @@ public:
     }
   }
 
+  /*
+   * Mutates the network then passes the network to the _callback function for
+   * evaluation. The _callback function should return a coefficient that is used
+   * to save the mutated network weights and biases as a weighted amount of the
+   * _callback output. e.g. if the _callback -> 0.1 then the network will be
+   * saved with 0.1 * mutate amount.
+   */
   void Mutate(const mutate_t _callback) {
     const value_t mutateAmount = Random(-1.0, 1.0);
 
@@ -309,6 +364,9 @@ public:
     }
   }
 
+  /*
+   * Calculates the average loss for each input / expected output pair.
+   */
   [[nodiscard]]
   value_t
   MeanLoss(const std::vector<std::vector<value_t>> &_inputsBatch,
@@ -350,6 +408,9 @@ public:
     return meanLoss;
   }
 
+  /*
+   * Randomize the weights and biases of the network.
+   */
   void Randomize() {
     for (size_t __layerIndex = 0; __layerIndex < GetLayersCount();
          __layerIndex++) {
@@ -368,15 +429,34 @@ public:
     }
   }
 
+  /*
+   * Get the amount of layers in the network.
+   */
   const size_t GetLayersCount() const { return m_layers.size(); }
+
+  /*
+   * Add a new layer to the network.
+   */
   void AddLayer(const Layer<value_t> &_layer) { m_layers.emplace_back(_layer); };
+
+  /*
+   * Add a new layer to the network with a specific activation function for the
+   * entire layer.
+   */
   void AddLayer(const Layer<value_t> &_layer, const activation_t _activation) {
     auto &layer = m_layers.emplace_back(_layer);
     layer.SetActivationFunction(_activation);
   };
 
+  /*
+   * Clear the network.
+   */
   void ClearLayers() { m_layers.clear(); }
 
+  /*
+   * Update the weight amounts for each neuron to support it's previous layer
+   * and the input layer.
+   */
   void FitLayers(const size_t _inputCount) {
     if (!_HasLayers()) {
       throw std::runtime_error("No valid layers to fit.");
@@ -402,12 +482,23 @@ public:
     }
   }
 
+  /*
+   * Get a specific layer in the network.
+   */
   Layer<value_t> &operator[](const size_t _layer) { return m_layers[_layer]; }
+
+  /*
+   * Get a specific layer in the network.
+   */
   const Layer<value_t> &operator[](const size_t _layer) const {
     return m_layers[_layer];
   }
 
 private:
+  /*
+   * Calculate a tree structure of the activated and unactivated outputs of each
+   * neuron in the network from a specific input.
+   */
   void _CalculateOutputStructures(
       const std::vector<value_t> &_inputs,
       std::vector<std::vector<value_t>> &_activatedStructure,
@@ -480,6 +571,11 @@ private:
     }
   }
 
+  /*
+   * Calculate a tree structure of the equivalent change gradient of the entire
+   * network after the specific neuron. This is used with the Chain Rule to
+   * calculate the equivalent gradient of the neurons weight and bias.
+   */
   void _CalculateGradientStructures(
       const std::vector<std::vector<value_t>> &_activatedStructure,
       const std::vector<std::vector<value_t>> &_unactivatedStructure,
@@ -538,6 +634,11 @@ private:
     }
   }
 
+  /*
+   * Calculate a tree structure of the equivalent change gradient of the entire
+   * network after the specific neuron. This is used with the Chain Rule to
+   * calculate the equivalent gradient of the neurons weight and bias.
+   */
   void _CalculateGradientStructures(
       const std::vector<value_t> &_inputs,
       const std::vector<value_t> &_expectedOutputs,
@@ -548,6 +649,10 @@ private:
                                  _expectedOutputs, _gradientStructure);
   }
 
+  /*
+   * Update the network with one input / expected output pair through back
+   * propagation and the learning rate.
+   */
   void _BackPropagate(const std::vector<value_t> &_inputs,
                       const std::vector<value_t> &_expectedOutputs,
                       const value_t _learningRate) {
@@ -588,7 +693,9 @@ private:
     }
   }
 
-  // Error checks
+  /*
+   * Checks if the network has layers and is not empty.
+   */
   [[nodiscard]]
   bool _HasLayers() const noexcept {
     if (GetLayersCount() <= 0) {
@@ -598,6 +705,10 @@ private:
     return true;
   }
 
+  /*
+   * Check that the network has the correct amount of weights in the input layer
+   * to support the amount of _inputs.
+   */
   [[nodiscard]]
   bool _HasValidInputs(const size_t _inputs) const noexcept {
     const auto &firstLayer = operator[](0);
@@ -613,6 +724,11 @@ private:
     return true;
   }
 
+  /*
+   * Check that all neurons contain a non null activation function. Also check
+   * that the activation function is stored in the internal activation function
+   * list.
+   */
   [[nodiscard]]
   bool _HasActivationFunctions() const noexcept {
     for (size_t __layerIndex = 0; __layerIndex < GetLayersCount();
@@ -647,6 +763,11 @@ private:
     return true;
   }
 
+  /*
+   * Check that all neurons contain a non null loss function. Also check
+   * that the loss function is stored in the internal loss function
+   * list.
+   */
   [[nodiscard]]
   bool _HasLossFunction() const noexcept {
     if (!m_loss) {
@@ -668,6 +789,10 @@ private:
     return true;
   }
 
+  /*
+   * Check that each neuron has the correct amount of weights to support the
+   * amount of outputs from the previous layer.
+   */
   [[nodiscard]]
   bool _HasValidAmountOfWeights() const noexcept {
     for (size_t __layerIndex = 1; __layerIndex < GetLayersCount();
