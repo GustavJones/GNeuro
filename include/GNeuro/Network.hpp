@@ -16,6 +16,8 @@ private:
   typedef value_t (*loss_t)(value_t _out, value_t _expected, bool _derived, std::string &_funcName);
   typedef value_t (*mutate_t)(const Network<value_t> &_network);
 
+  std::vector<Layer<value_t>> m_layers;
+  loss_t m_loss = nullptr;
   std::vector<activation_t> m_activationFunctions {
     GNeuro::None,
     GNeuro::Sigmoid,
@@ -40,6 +42,22 @@ public:
 
   void SetLoss(const loss_t _loss) { m_loss = _loss; }
   const loss_t GetLoss() const { return m_loss; }
+
+  void AddActivationFunction(activation_t _activationFunction) {
+    m_activationFunctions.push_back(_activationFunction);
+  }
+
+  void AddLossFunction(loss_t _lossFunction) {
+    m_lossFunctions.push_back(_lossFunction);
+  }
+
+  const std::vector<activation_t> &GetActivationFunctionList() const {
+    return m_activationFunctions;
+  }
+
+  const std::vector<loss_t> &GetLossFunctionList() const {
+    return m_lossFunctions;
+  }
 
   void SaveModel(const std::string &_filepath) const {
     GParsing::JSONObject<unsigned char> json;
@@ -604,8 +622,23 @@ private:
       for (size_t __neuronIndex = 0; __neuronIndex < layer.GetSize();
            __neuronIndex++) {
         const auto &neuron = layer[__neuronIndex];
+
         // Neuron activation function check
         if (neuron.GetActivation() == nullptr) {
+          return false;
+        }
+
+        bool found = false;
+        for (size_t __activationIndex = 0;
+             __activationIndex < m_activationFunctions.size();
+             __activationIndex++) {
+          if (neuron.GetActivation() ==
+              m_activationFunctions[__activationIndex]) {
+            found = true;
+          }
+        }
+
+        if (!found) {
           return false;
         }
       }
@@ -617,6 +650,18 @@ private:
   [[nodiscard]]
   bool _HasLossFunction() const noexcept {
     if (!m_loss) {
+      return false;
+    }
+
+    bool found = false;
+    for (size_t __lossIndex = 0; __lossIndex < m_lossFunctions.size();
+         __lossIndex++) {
+      if (m_loss == m_lossFunctions[__lossIndex]) {
+        found = true;
+      }
+    }
+
+    if (!found) {
       return false;
     }
 
@@ -642,8 +687,5 @@ private:
 
     return true;
   }
-
-  std::vector<Layer<value_t>> m_layers;
-  loss_t m_loss;
 };
 } // namespace GNeuro
