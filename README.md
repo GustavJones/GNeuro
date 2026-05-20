@@ -63,6 +63,10 @@ To use this as a library simply download a copy from this repo and add it to you
     network.AddLayer(GNeuro::Layer(2), GNeuro::Sigmoid);
     network.AddLayer(GNeuro::Layer(1), GNeuro::Sigmoid);
 
+    // Add custom functions to internal lists (not needed when using GNeuro default functions)
+    // network.AddActivationFunction(YOUR_FUNC);
+    // network.AddLossFunction(YOUR_FUNC);
+
     // Add layer weights by fitting to model size and input count
     network.FitLayers(2);
 

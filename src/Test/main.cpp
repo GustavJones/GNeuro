@@ -36,6 +36,10 @@ int main(int argc, char *argv[]) {
     network.AddLayer(GNeuro::Layer<double>(2), GNeuro::Sigmoid);
     network.AddLayer(GNeuro::Layer<double>(1), GNeuro::Sigmoid);
 
+    // Add custom functions to internal lists (not needed when using GNeuro default functions)
+    // network.AddActivationFunction(YOUR_FUNC);
+    // network.AddLossFunction(YOUR_FUNC);
+
     // Add layer weights by fitting to model size and input count
     network.FitLayers(2);
 
