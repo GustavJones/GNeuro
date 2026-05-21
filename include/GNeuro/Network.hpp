@@ -308,18 +308,16 @@ public:
    */
   void Train(const std::vector<std::vector<value_t>> &_inputsBatch,
              const std::vector<std::vector<value_t>> &_expectedOutputsBatch,
-             const value_t _learningRate, const value_t _lossThreshold) {
+             const double _learningRate, const double _lossThreshold) {
     if (_inputsBatch.size() != _expectedOutputsBatch.size()) {
       throw std::runtime_error(
           "Inputs and expected outputs batch size doesn't match.");
     }
 
-    value_t meanLoss = _lossThreshold + 1;
+    double meanLoss = _lossThreshold + 1;
     while (meanLoss > _lossThreshold) {
-      for (size_t __inputIndex = 0; __inputIndex < _inputsBatch.size();
-           __inputIndex++) {
-        _BackPropagate(_inputsBatch[__inputIndex],
-                       _expectedOutputsBatch[__inputIndex], _learningRate);
+      for (size_t __inputIndex = 0; __inputIndex < _inputsBatch.size(); __inputIndex++) {
+        _BackPropagate(_inputsBatch[__inputIndex], _expectedOutputsBatch[__inputIndex], _learningRate);
       }
 
       meanLoss = MeanLoss(_inputsBatch, _expectedOutputsBatch);
@@ -655,36 +653,25 @@ private:
    */
   void _BackPropagate(const std::vector<value_t> &_inputs,
                       const std::vector<value_t> &_expectedOutputs,
-                      const value_t _learningRate) {
-    std::vector<std::vector<value_t>> gradientStructure, activatedStructure,
-        unactivatedStructure;
-    _CalculateOutputStructures(_inputs, activatedStructure,
-                               unactivatedStructure);
-    _CalculateGradientStructures(activatedStructure, unactivatedStructure,
-                                 _expectedOutputs, gradientStructure);
+                      const double _learningRate) {
+    std::vector<std::vector<value_t>> gradientStructure, activatedStructure, unactivatedStructure;
+    _CalculateOutputStructures(_inputs, activatedStructure, unactivatedStructure);
+    _CalculateGradientStructures(activatedStructure, unactivatedStructure, _expectedOutputs, gradientStructure);
 
-    for (int64_t __layerIndex = GetLayersCount() - 1; __layerIndex >= 0;
-         __layerIndex--) {
+    for (int64_t __layerIndex = GetLayersCount() - 1; __layerIndex >= 0; __layerIndex--) {
       auto &layer = operator[](__layerIndex);
-      for (size_t __neuronIndex = 0; __neuronIndex < layer.GetSize();
-           __neuronIndex++) {
+      for (size_t __neuronIndex = 0; __neuronIndex < layer.GetSize(); __neuronIndex++) {
         auto &neuron = layer[__neuronIndex];
 
         const auto newBias = neuron.GetBias() - (gradientStructure[__layerIndex][__neuronIndex] * _learningRate);
         neuron.SetBias(newBias);
 
-        for (size_t __weightIndex = 0; __weightIndex < neuron.GetInputsCount();
-             __weightIndex++) {
+        for (size_t __weightIndex = 0; __weightIndex < neuron.GetInputsCount(); __weightIndex++) {
           value_t newWeight;
           if (__layerIndex > 0) {
-            newWeight = neuron.GetWeight(__weightIndex) -
-                        (gradientStructure[__layerIndex][__neuronIndex] *
-                         activatedStructure[__layerIndex - 1][__weightIndex] *
-                         _learningRate);
+            newWeight = neuron.GetWeight(__weightIndex) - (gradientStructure[__layerIndex][__neuronIndex] * activatedStructure[__layerIndex - 1][__weightIndex] * _learningRate);
           } else {
-            newWeight = neuron.GetWeight(__weightIndex) -
-                        (gradientStructure[__layerIndex][__neuronIndex] *
-                         _inputs[__weightIndex] * _learningRate);
+            newWeight = neuron.GetWeight(__weightIndex) - (gradientStructure[__layerIndex][__neuronIndex] * _inputs[__weightIndex] * _learningRate);
           }
 
           neuron.SetWeight(__weightIndex, newWeight);
