@@ -11,8 +11,17 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <csignal>
+#include <atomic>
+#include <thread>
 
 namespace GNeuro {
+
+static std::atomic<bool> s_training = false;
+
+static void TrainingSignalHandler(int _) {
+  s_training = false;
+}
 
 /*
  * An object to create a Neural Network. Uses different GNeuro::Layers to define
@@ -309,20 +318,36 @@ public:
   void Train(const std::vector<std::vector<value_t>> &_inputsBatch,
              const std::vector<std::vector<value_t>> &_expectedOutputsBatch,
              const double _learningRate, const double _lossThreshold) {
+    while (s_training) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
     if (_inputsBatch.size() != _expectedOutputsBatch.size()) {
       throw std::runtime_error(
           "Inputs and expected outputs batch size doesn't match.");
     }
 
-    double meanLoss = _lossThreshold + 1;
-    while (meanLoss > _lossThreshold) {
-      for (size_t __inputIndex = 0; __inputIndex < _inputsBatch.size(); __inputIndex++) {
-        _BackPropagate(_inputsBatch[__inputIndex], _expectedOutputsBatch[__inputIndex], _learningRate);
-      }
+    s_training = true;
+    std::signal(SIGINT, TrainingSignalHandler);
+    try {
+      double meanLoss = _lossThreshold + 1;
+      while (meanLoss > _lossThreshold && s_training) {
+        for (size_t __inputIndex = 0; __inputIndex < _inputsBatch.size(); __inputIndex++) {
+          _BackPropagate(_inputsBatch[__inputIndex], _expectedOutputsBatch[__inputIndex], _learningRate);
+        }
 
-      meanLoss = MeanLoss(_inputsBatch, _expectedOutputsBatch);
-      std::cout << "Loss: " << meanLoss << std::endl;
+        meanLoss = MeanLoss(_inputsBatch, _expectedOutputsBatch);
+        std::cout << "Loss: " << meanLoss << std::endl;
+      }
+    } catch (...) {
+      s_training = false;
+      std::signal(SIGINT, SIG_DFL);
+      throw;
+      return;
     }
+
+    s_training = false;
+    std::signal(SIGINT, SIG_DFL);
   }
 
   /*
