@@ -8,6 +8,7 @@
 #include "GNeuro/Activation.hpp"
 #include "GNeuro/Random.hpp"
 #include "GNeuro/Loss.hpp"
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -314,10 +315,11 @@ public:
    * Continuously train the network on a collection of input and expected output
    * values until a certain loss threshold is reached.
    * Use _learningRate to adjust the model weights and biases.
+   * Use _learningRateChangeFactor for variable learning rate change. (set to <= 0 to disable)
    */
   void Train(const std::vector<std::vector<value_t>> &_inputsBatch,
              const std::vector<std::vector<value_t>> &_expectedOutputsBatch,
-             const double _learningRate, const double _lossThreshold) {
+             double _learningRate, const double _learningRateChangeFactor, const double _lossThreshold) {
     while (s_training) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -331,13 +333,26 @@ public:
     std::signal(SIGINT, TrainingSignalHandler);
     try {
       double meanLoss = _lossThreshold + 1;
+      double previousMeanLoss = _lossThreshold;
       while (meanLoss > _lossThreshold && s_training) {
         for (size_t __inputIndex = 0; __inputIndex < _inputsBatch.size(); __inputIndex++) {
           _BackPropagate(_inputsBatch[__inputIndex], _expectedOutputsBatch[__inputIndex], _learningRate);
         }
 
         meanLoss = MeanLoss(_inputsBatch, _expectedOutputsBatch);
-        std::cout << "Loss: " << meanLoss << std::endl;
+        std::cout << "Loss: " << meanLoss << '\t' << "Learning Rate: " << _learningRate << std::endl;
+
+        if (_learningRateChangeFactor >= 0) {
+          // Add a little jiggle room for random weight changes
+          if (meanLoss > previousMeanLoss + 0.00001) {
+            _learningRate *= (1 - _learningRateChangeFactor);
+          }
+          else if (std::abs(meanLoss - previousMeanLoss) < 0.1) {
+            _learningRate += _learningRate * _learningRateChangeFactor;
+          }
+        }
+
+        previousMeanLoss = meanLoss;
       }
     } catch (...) {
       s_training = false;

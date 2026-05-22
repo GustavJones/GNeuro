@@ -46,8 +46,8 @@ int main(int argc, char *argv[]) {
     // Randomize model's weights and bias values
     network.Randomize();
 
-    // Train the model with a learning rate of 0.01 until a loss threshold of 0.001 is reached
-    network.Train(inputs, expectedOutputs, 0.01, 0.001);
+    // Train the model with a learning rate of 0.01 until a loss threshold of 0.001 is reached and disabled variable learning rate.
+    network.Train(inputs, expectedOutputs, 0.01, 0, 0.001);
   }  
 
   // Feed inputs through the network and store outputs
