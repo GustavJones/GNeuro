@@ -10,6 +10,7 @@
 #include "GNeuro/Loss.hpp"
 #include <cmath>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <csignal>
@@ -31,6 +32,7 @@ static void TrainingSignalHandler(int _) {
  */
 template <typename value_t> class Network {
 private:
+  typedef value_t (*optimizer_t)(value_t _learningRate, value_t _loss, value_t _previousLoss);
   typedef value_t (*activation_t)(value_t _in, bool _derived, std::string &_funcName);
   typedef value_t (*loss_t)(value_t _out, value_t _expected, bool _derived, std::string &_funcName);
   typedef value_t (*mutate_t)(const Network<value_t> &_network);
@@ -319,39 +321,43 @@ public:
    */
   void Train(const std::vector<std::vector<value_t>> &_inputsBatch,
              const std::vector<std::vector<value_t>> &_expectedOutputsBatch,
-             double _learningRate, const double _learningRateChangeFactor, const double _lossThreshold) {
-    while (s_training) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
+             double _learningRate, const double _lossThreshold, const optimizer_t _optimizerFunction = nullptr) {
+    // if (_learningRateChangeFactor > 1 || _learningRateChangeFactor < 0) {
+    //   throw std::runtime_error("Learning rate change factor not within 0 - 1 range.");
+    // }
 
     if (_inputsBatch.size() != _expectedOutputsBatch.size()) {
       throw std::runtime_error(
           "Inputs and expected outputs batch size doesn't match.");
     }
 
+    while (s_training) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
     s_training = true;
     std::signal(SIGINT, TrainingSignalHandler);
     try {
       double meanLoss = _lossThreshold + 1;
-      double previousMeanLoss = _lossThreshold;
+      double previousMeanLoss = MeanLoss(_inputsBatch, _expectedOutputsBatch);
+      std::cout << "Original Loss: " << GParsing::to_string(previousMeanLoss) << '\t' << "Original Learning Rate: " << GParsing::to_string(_learningRate) << std::endl;
+      std::cout << std::endl;
+      std::cout << std::endl;
+
       while (meanLoss > _lossThreshold && s_training) {
         for (size_t __inputIndex = 0; __inputIndex < _inputsBatch.size(); __inputIndex++) {
           _BackPropagate(_inputsBatch[__inputIndex], _expectedOutputsBatch[__inputIndex], _learningRate);
         }
 
         meanLoss = MeanLoss(_inputsBatch, _expectedOutputsBatch);
-        std::cout << "Loss: " << meanLoss << '\t' << "Learning Rate: " << _learningRate << std::endl;
 
-        if (_learningRateChangeFactor >= 0) {
-          // Add a little jiggle room for random weight changes
-          if (meanLoss > previousMeanLoss + 0.00001) {
-            _learningRate *= (1 - _learningRateChangeFactor);
-          }
-          else if (std::abs(meanLoss - previousMeanLoss) < 0.1) {
-            _learningRate += _learningRate * _learningRateChangeFactor;
-          }
+        if (_optimizerFunction) {
+          _learningRate = _optimizerFunction(_learningRate, meanLoss, previousMeanLoss);
         }
 
+        std::cout << "\x1b[2F";
+        std::cout << "Loss: " << GParsing::to_string(meanLoss) << '\n';
+        std::cout << "Learning Rate: " << GParsing::to_string(_learningRate) << std::endl;
         previousMeanLoss = meanLoss;
       }
     } catch (...) {
