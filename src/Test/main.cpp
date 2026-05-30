@@ -1,17 +1,17 @@
-#include <iostream>
-#include <vector>
+#include "GNeuro/Functions.hpp"
 #include "GNeuro/GNeuro.hpp"
+#include <stdexcept>
 
 // Example data for an XOR network
 // Trains a model to produce the output of an XOR operation
-static const std::vector<std::vector<double>> inputs = {
+static const GMath::Matrix<double> inputs = {
   {1, 1},
   {1, 0},
   {0, 1},
   {0, 0},
 };
 
-static const std::vector<std::vector<double>> expectedOutputs = {
+static const GMath::Matrix<double> expectedOutputs = {
   {0},
   {1},
   {1},
@@ -19,43 +19,31 @@ static const std::vector<std::vector<double>> expectedOutputs = {
 };
 
 int main(int argc, char *argv[]) {
-  // Create a network object.
-  GNeuro::Network<double> network;
+  GNeuro::Network<double> n;
+  GNeuro::Model<double> model;
 
+  GNeuro::Functions<double>::loss_t loss;
   try {
-    // Try to load a model file if it exists, otherwise create a new model.
-    network.LoadModel("model.json");
+    model.Load("model.json", loss, model.LossFunctionList, model.ActivationFunctionList);
   }
-  catch (const std::exception &e) {
-    // Specify the new model's properties
+  catch (const std::runtime_error &_e) {
+    std::cout << _e.what() << std::endl;
+    model.AddLayer(GNeuro::Layer<double>(3, GNeuro::Sigmoid));
+    model.AddLayer(GNeuro::Layer<double>(5, GNeuro::Sigmoid));
+    model.AddLayer(GNeuro::Layer<double>(1, GNeuro::Sigmoid));
+    model.FitLayers(2);
+    model.Randomize();
+  }
+
+
+  n.SetModel(model);
+  n.SetLoss(GNeuro::SquaredError);
+
+  n.Train(inputs, expectedOutputs, 0.01, 0.001);
+
+  model = n.GetModel();
+
+  model.Save("model.json", n.GetLoss());
   
-    // Set the model loss function
-    network.SetLoss(GNeuro::SquaredError);
-
-    // Add neuron layers
-    network.AddLayer(GNeuro::Layer<double>(2), GNeuro::Sigmoid);
-    network.AddLayer(GNeuro::Layer<double>(1), GNeuro::Sigmoid);
-
-    // Add custom functions to internal lists (not needed when using GNeuro default functions)
-    // network.AddActivationFunction(YOUR_FUNC);
-    // network.AddLossFunction(YOUR_FUNC);
-
-    // Add layer weights by fitting to model size and input count
-    network.FitLayers(2);
-
-    // Randomize model's weights and bias values
-    network.Randomize();
-
-    // Train the model with a learning rate of 0.01 until a loss threshold of 0.001 is reached and disabled variable learning rate.
-    network.Train(inputs, expectedOutputs, 0.01, 0.001);
-  }  
-
-  // Feed inputs through the network and store outputs
-  auto output = network.Calculate(inputs[0]);
-  std::cout << output[0] << std::endl;
-
-  // Save model to a JSON file
-  network.SaveModel("model.json");
-
   return 0;
 }
