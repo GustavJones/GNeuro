@@ -16,7 +16,7 @@ namespace GNeuro {
  */
 template<typename value_t>
 inline value_t Error(value_t _out, value_t _expected, bool _derived, std::string &_funcName) {
-  _funcName = "Error";
+  _funcName = "GNeuro::Error";
 
   if (_derived) {
     return 1;
@@ -33,7 +33,7 @@ inline value_t Error(value_t _out, value_t _expected, bool _derived, std::string
  */
 template<typename value_t>
 inline value_t NegativeError(value_t _out, value_t _expected, bool _derived, std::string &_funcName) {
-  _funcName = "NegativeError";
+  _funcName = "GNeuro::NegativeError";
 
   if (_derived) {
     return -1;
@@ -50,7 +50,7 @@ inline value_t NegativeError(value_t _out, value_t _expected, bool _derived, std
  */
 template<typename value_t>
 inline value_t SquaredError(value_t _out, value_t _expected, bool _derived, std::string &_funcName) {
-  _funcName = "SquaredError";
+  _funcName = "GNeuro::SquaredError";
 
   std::string tmp;
   if (_derived) {
@@ -68,7 +68,7 @@ inline value_t SquaredError(value_t _out, value_t _expected, bool _derived, std:
  */
 template<typename value_t>
 inline value_t SquaredNegativeError(value_t _out, value_t _expected, bool _derived, std::string &_funcName) {
-  _funcName = "SquaredNegativeError";
+  _funcName = "GNeuro::SquaredNegativeError";
 
   std::string tmp;
   if (_derived) {

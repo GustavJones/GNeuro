@@ -17,7 +17,7 @@ namespace GNeuro {
  */
 template<typename value_t>
 inline value_t None(value_t _in, bool _derived, std::string &_funcName) {
-  _funcName = "None";
+  _funcName = "GNeuro::None";
 
   if (_derived) {
     return 1;
@@ -34,11 +34,12 @@ inline value_t None(value_t _in, bool _derived, std::string &_funcName) {
  */
 template<typename value_t>
 inline value_t Sigmoid(value_t _in, bool _derived, std::string &_funcName) {
-  _funcName = "Sigmoid";
+  _funcName = "GNeuro::Sigmoid";
 
-  std::string tmp;
+  std::string _;
   if (_derived) {
-    return Sigmoid(_in, false, tmp) * (1 - Sigmoid(_in, false, tmp));
+    const value_t s = Sigmoid(_in, false, _);
+    return s * (1 - s);
   } else {
     return 1 / (1 + std::exp(-_in));
   }
@@ -52,7 +53,7 @@ inline value_t Sigmoid(value_t _in, bool _derived, std::string &_funcName) {
  */
 template<typename value_t>
 inline value_t ReLu(value_t _in, bool _derived, std::string &_funcName) {
-  _funcName = "ReLu";
+  _funcName = "GNeuro::ReLu";
 
   if (_derived) {
     return (_in >= 0) ? 1 : 0;
@@ -69,7 +70,7 @@ inline value_t ReLu(value_t _in, bool _derived, std::string &_funcName) {
  */
 template<typename value_t>
 inline value_t LeakyReLu(value_t _in, bool _derived, std::string &_funcName) {
-  _funcName = "LeakyReLu";
+  _funcName = "GNeuro::LeakyReLu";
 
   const value_t SLOPE = 0.01;
 
@@ -88,7 +89,7 @@ inline value_t LeakyReLu(value_t _in, bool _derived, std::string &_funcName) {
  */
 template<typename value_t>
 inline value_t TanH(value_t _in, bool _derived, std::string &_funcName) {
-  _funcName = "TanH";
+  _funcName = "GNeuro::TanH";
 
   if (_derived) {
     return std::pow(2 / (std::exp(_in) + std::exp(-_in)), 2);

@@ -1,3 +1,6 @@
 [submodule "GParsing"]
 	path = external/GParsing
 	url = https://github.com/GustavJones/GParsing.git
+[submodule "GMath"]
+	path = external/GMath
+	url = https://github.com/GustavJones/GMath.git
