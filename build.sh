@@ -7,7 +7,7 @@ cd $(dirname $0)
 BUILD_TYPE=Debug
 
 # Configure project
-cmake -S . -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+cmake -S . -B build -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DGNEURO_BUILD_TESTS=1
 
 # Build project
 cmake --build build --config $BUILD_TYPE -j $((`nproc` - 1))

@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
   n.SetModel(model);
   n.SetLoss(GNeuro::SquaredError);
 
-  n.Train(inputs, expectedOutputs, 0.01, 0.001);
+  n.Train(inputs, expectedOutputs, 0.1, 0.001);
 
   model = n.GetModel();
 

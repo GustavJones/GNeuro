@@ -7,7 +7,7 @@ set BUILD_TYPE=Debug
 cd /d "%~dp0"
 
 :: Configure cmake project
-cmake.exe -S . -B build -DCMAKE_BUILD_TYPE=%BUILD_TYPE%
+cmake.exe -S . -B build -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DGNEURO_BUILD_TESTS=1
 
 :: Set amount of jobs
 set /a JOBS=%NUMBER_OF_PROCESSORS% - 1

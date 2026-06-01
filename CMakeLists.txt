@@ -6,14 +6,14 @@ project(GNeuro)
 add_library(GNeuro INTERFACE)
 target_include_directories(GNeuro INTERFACE
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/GParsing/include/"
-  "${CMAKE_CURRENT_SOURCE_DIR}/external/GMath/include/"
 )
+
+target_link_libraries(GNeuro INTERFACE GMath GParsing)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(BUILD_SHARED_LIBS OFF)
-option(BUILD_STATIC_LIBS ON)
+option(BUILD_SHARED_LIBS "Build shared library" OFF)
+option(GNEURO_BUILD_TESTS "Build GNeuro tests" OFF)
 
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_RPATH "$ORIGIN/${CMAKE_INSTALL_LIBDIR} ${CMAKE_INSTALL_FULL_LIBDIR}")
