@@ -28,18 +28,20 @@ int main(int argc, char *argv[]) {
   }
   catch (const std::runtime_error &_e) {
     std::cout << _e.what() << std::endl;
-    model.AddLayer(GNeuro::Layer<double>(3, GNeuro::Sigmoid));
-    model.AddLayer(GNeuro::Layer<double>(5, GNeuro::Sigmoid));
+    model.AddLayer(GNeuro::Layer<double>(2, GNeuro::Sigmoid));
     model.AddLayer(GNeuro::Layer<double>(1, GNeuro::Sigmoid));
     model.FitLayers(2);
     model.Randomize();
   }
 
-
   n.SetModel(model);
   n.SetLoss(GNeuro::SquaredError);
 
-  n.Train(inputs, expectedOutputs, 0.1, 0.001);
+  n.Train(inputs, expectedOutputs, 0.01, 0.001);
+ 
+  for (size_t i = 0; i < inputs.Shape().Rows; i++) {
+    std::cout << n.Calculate(inputs[i]) << std::endl;
+  }
 
   model = n.GetModel();
 

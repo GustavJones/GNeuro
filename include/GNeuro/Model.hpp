@@ -66,7 +66,7 @@ public:
    * Get activation function for _neuronIndex from _layerIndex.
    */
   [[nodiscard]]
-  typename Functions<value_t>::activation_t GetActivationFunction(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex) {
+  typename Functions<value_t>::activation_t GetActivationFunction(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex) const {
     return m_layers[_layerIndex].GetActivationFunction(_neuronIndex);
   }
 
@@ -81,7 +81,7 @@ public:
    * Get the weight value of a specific neuron in a layer with a specific weight index.
    */
   [[nodiscard]]
-  value_t GetWeight(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex, const GMath::size_t _weightIndex) {
+  value_t GetWeight(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex, const GMath::size_t _weightIndex) const {
     return m_layers[_layerIndex].GetWeight(_neuronIndex, _weightIndex);
   }
 
@@ -96,7 +96,7 @@ public:
    * Get the bias value of a specific neuron in a layer.
    */
   [[nodiscard]]
-  value_t GetBias(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex) {
+  value_t GetBias(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex) const {
     return m_layers[_layerIndex].GetBias(_neuronIndex);
   }
 
@@ -177,7 +177,7 @@ public:
    * Calculate the loss of an input / expected output pair.
    */
   [[nodiscard]]
-  value_t Loss(const GMath::Matrix<value_t> &_inputs, const GMath::Matrix<value_t> &_expectedOutputs, const typename Functions<value_t>::loss_t _loss) {
+  value_t Loss(const GMath::Matrix<value_t> &_inputs, const GMath::Matrix<value_t> &_expectedOutputs, const typename Functions<value_t>::loss_t _loss) const {
       value_t avgLoss = 0;
 
       const auto outputStructure = Calculate(_inputs);
@@ -206,7 +206,7 @@ public:
    * Calculates the average loss for each input / expected output pair.
    */
   [[nodiscard]]
-  value_t MeanLoss(const GMath::Matrix<value_t> &_inputsBatch, const GMath::Matrix<value_t> &_expectedOutputsBatch, const typename Functions<value_t>::loss_t _loss) {
+  value_t MeanLoss(const GMath::Matrix<value_t> &_inputsBatch, const GMath::Matrix<value_t> &_expectedOutputsBatch, const typename Functions<value_t>::loss_t _loss) const {
     value_t meanLoss = 0;
 
     if (_inputsBatch.Shape().Rows != _expectedOutputsBatch.Shape().Rows) {
@@ -227,7 +227,7 @@ public:
   /*
    * Save the model to a file on disk.
    */
-  void Save(const std::string &_filepath, const typename Functions<value_t>::loss_t _loss = nullptr) {
+  void Save(const std::string &_filepath, const typename Functions<value_t>::loss_t _loss) {
     const std::string MODEL_SAVE_VERSION = "v1";
 
     GParsing::JSONObject<unsigned char> json;
@@ -243,6 +243,9 @@ public:
       std::string lossFunctionName;
       _loss(0, 0, false, lossFunctionName);
       json.AddMember("loss", (GParsing::JSONString<unsigned char>)lossFunctionName);
+    }
+    else {
+      throw std::runtime_error("No loss function... Cannot save model.");
     }
 
     // Weights

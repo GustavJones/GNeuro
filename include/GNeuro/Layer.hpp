@@ -123,9 +123,9 @@ public:
     auto neuronWeightCount = m_weights.Shape().Columns;
 
     for (size_t i = 0; i < neuronCount; i++) {
-      m_biases[i][0] = Random(-1.0, 1.0);
+      m_biases[i][0] = Random(0.0, 1.0);
       for (size_t j = 0; j < neuronWeightCount; j++) {
-        m_weights[i][j] = Random(-1.0, 1.0);
+        m_weights[i][j] = Random(0.0, 1.0);
       }
     }
   }
