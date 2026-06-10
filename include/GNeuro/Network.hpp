@@ -186,6 +186,7 @@ public:
 
       {
         std::lock_guard<std::mutex> guard(m_mutex);
+
         m_model = Average(models);
       }
 
@@ -256,7 +257,6 @@ public:
       lossFunc = m_loss;
     }
 
-
     return copy.MeanLoss(_inputsBatch, _expectedOutputsBatch, lossFunc);
   }
 
@@ -297,6 +297,7 @@ private:
     }
 
     // Copy the first model to obtain the correct shape and activations.
+    std::mutex avg_mutex;
     GNeuro::Model<value_t> avg = _models[0];
 
     // Devide first model with model count.
@@ -315,20 +316,33 @@ private:
     }
 
     // Add all of the other models to the average.
-    for (size_t __modelIndex = 1; __modelIndex < _models.Size(); __modelIndex++) {
-      for (size_t __layerIndex = 0; __layerIndex < _models[__modelIndex].GetLayerCount(); __layerIndex++) {
-        for (size_t __neuronIndex = 0; __neuronIndex < _models[__modelIndex].GetNeuronCount(__layerIndex); __neuronIndex++) {
-          value_t bias = avg.GetBias(__layerIndex, __neuronIndex);
-          bias += _models[__modelIndex].GetBias(__layerIndex, __neuronIndex) / _models.Size();
-          avg.SetBias(bias, __layerIndex, __neuronIndex);
+    GMath::DynamicArray<std::future<void>> threads(_models.Size() - 1);
+    const auto threadFunc = [](const GMath::DynamicArray<GNeuro::Model<value_t>> *_models, const size_t __modelIndex, GNeuro::Model<value_t> *_avg, std::mutex *_mutex) {
+      for (size_t __layerIndex = 0; __layerIndex < (*_models)[__modelIndex].GetLayerCount(); __layerIndex++) {
+        for (size_t __neuronIndex = 0; __neuronIndex < (*_models)[__modelIndex].GetNeuronCount(__layerIndex); __neuronIndex++) {
+          GMath::DynamicArray<value_t> weights((*_models)[__modelIndex].GetWeightCount(__layerIndex));
+          value_t bias = (*_models)[__modelIndex].GetBias(__layerIndex, __neuronIndex) / _models->Size();
 
-          for (size_t __weightIndex = 0; __weightIndex < _models[__modelIndex].GetWeightCount(__layerIndex); __weightIndex++) {
-            value_t weight = avg.GetWeight(__layerIndex, __neuronIndex, __weightIndex);
-            weight += _models[__modelIndex].GetWeight(__layerIndex, __neuronIndex, __weightIndex) / _models.Size();
-            avg.SetWeight(weight, __layerIndex, __neuronIndex, __weightIndex);
+          for (size_t __weightIndex = 0; __weightIndex < (*_models)[__modelIndex].GetWeightCount(__layerIndex); __weightIndex++) {
+            weights[__weightIndex] = (*_models)[__modelIndex].GetWeight(__layerIndex, __neuronIndex, __weightIndex) / _models->Size();
+          }
+
+          std::lock_guard<std::mutex> guard(*_mutex);
+          _avg->SetBias(_avg->GetBias(__layerIndex, __neuronIndex) + bias, __layerIndex, __neuronIndex);
+
+          for (size_t __weightIndex = 0; __weightIndex < weights.Size(); __weightIndex++) {
+            _avg->SetWeight(_avg->GetWeight(__layerIndex, __neuronIndex, __weightIndex) + weights[__weightIndex], __layerIndex, __neuronIndex, __weightIndex);
           }
         }
       }
+    };
+
+    for (size_t __modelIndex = 1; __modelIndex < _models.Size(); __modelIndex++) {
+      threads[__modelIndex - 1] = std::async(std::launch::async, threadFunc, &_models, __modelIndex, &avg, &avg_mutex);
+    }
+
+    for (size_t __threadIndex = 0; __threadIndex < threads.Size(); __threadIndex++) {
+      threads[__threadIndex].wait();
     }
 
     return avg;

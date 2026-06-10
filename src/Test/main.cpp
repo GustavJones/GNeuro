@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
 
   GNeuro::Functions<double>::loss_t loss;
   try {
-    model.Load("model.json", loss, model.LossFunctionList, model.ActivationFunctionList);
+    model.Load("model.json", loss, model.GetLossFunctionList(), model.GetActivationFunctionList());
   }
   catch (const std::runtime_error &_e) {
     std::cout << _e.what() << std::endl;
