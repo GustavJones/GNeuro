@@ -19,7 +19,7 @@ template <typename value_t> class Layer {
 public:
 
 private:
-  GMath::Matrix<typename Functions<value_t>::activation_t> m_activationFunctions;
+  GMath::DynamicArray<typename Functions<value_t>::activation_t> m_activationFunctions;
   GMath::Matrix<value_t> m_weights;
   GMath::Matrix<value_t> m_biases;
 
@@ -29,9 +29,9 @@ public:
   explicit Layer(const GMath::size_t _neuronCount,
                  const typename Functions<value_t>::activation_t _activationFunction = nullptr)
       : m_weights(_neuronCount, 0), m_biases(_neuronCount, 1),
-        m_activationFunctions(_neuronCount, 1) {
+        m_activationFunctions(_neuronCount) {
     for (size_t i = 0; i < _neuronCount; i++) {
-      m_activationFunctions[i][0] = _activationFunction;
+      SetActivationFunction(_activationFunction, i);
     }
   };
 
@@ -53,7 +53,7 @@ public:
   void SetSize(const GMath::size_t _count) {
     m_weights.Reshape({_count, 0});
     m_biases.Reshape({_count, 1});
-    m_activationFunctions.Reshape({_count, 1});
+    m_activationFunctions.Resize(_count);
   }
 
   /*
@@ -68,14 +68,14 @@ public:
    * Get the activation function for a specific neuron in the layer.
    */
   [[nodiscard]]
-  typename Functions<value_t>::activation_t GetActivationFunction(const GMath::size_t _index) const { return m_activationFunctions[_index][0]; }
+  typename Functions<value_t>::activation_t GetActivationFunction(const GMath::size_t _index) const { return m_activationFunctions[_index]; }
 
   /*
    * Sets the activation function of the neurons in the layer
    * individually.
    */
   void SetActivationFunction(const typename Functions<value_t>::activation_t _func, const GMath::size_t _index) {
-    m_activationFunctions[_index][0] = _func;
+    m_activationFunctions[_index] = _func;
   }
 
   /*
@@ -148,12 +148,12 @@ public:
 
     _activated.Reshape(_unactivated.Shape());
 
-    for (size_t i = 0; i < _unactivated.Shape().Rows; i++) {
-      typename Functions<value_t>::activation_t func = m_activationFunctions[i][0];
-      value_t val = _unactivated[i][0];
+    for (size_t i = 0; i < _unactivated.Shape().Columns; i++) {
+      typename Functions<value_t>::activation_t func = GetActivationFunction(i);
+      value_t val = _unactivated[0][i];
 
       if (func) {
-        _activated[i][0] = func(val, false, _);
+        _activated[0][i] = func(val, false, _);
       }
     }
   }
@@ -164,26 +164,9 @@ public:
    */
   [[nodiscard]]
   GMath::Matrix<value_t> Calculate(const GMath::Matrix<value_t> &_inputs) const {
-    std::string _;
-    GMath::Matrix<value_t> output;
-
-    if (_inputs.IsRowMatrix()) {
-      output = _inputs * m_weights.Transpose() + m_biases.Transpose();
-    } else if (_inputs.IsColumnMatrix()) {
-      output = _inputs.Transpose() * m_weights.Transpose() + m_biases.Transpose();
-    }
-    else {
-      throw std::runtime_error("Inputs not a column / row matrix.");
-    }
-
-    for (size_t i = 0; i < output.Shape().Rows; i++) {
-      typename Functions<value_t>::activation_t func = m_activationFunctions[i][0];
-      value_t val = output[i][0];
-
-      if (func) {
-        output[i][0] = func(val, false, _);
-      }
-    }
+    GMath::Matrix<value_t> uOutputs, aOutputs;
+    Calculate(_inputs, uOutputs, aOutputs);
+    return aOutputs;
   }
 };
 } // namespace GNeuro
