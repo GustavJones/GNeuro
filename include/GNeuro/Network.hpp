@@ -396,7 +396,7 @@ private:
     for (size_t __neuronIndex = 0; __neuronIndex < output.GetNeuronCount(lastLayerIndex); __neuronIndex++) {
       auto activationFunction = output.GetActivationFunction(lastLayerIndex, __neuronIndex);
 
-      const auto lossDelta = lossFunc(aOutputs[lastLayerIndex][__neuronIndex], _expectedOutputs[__neuronIndex][0], true, _);
+      const auto lossDelta = lossFunc(aOutputs[lastLayerIndex][__neuronIndex], _expectedOutputs[0][__neuronIndex], true, _);
 
       if (activationFunction) {
         const auto activationDelta = activationFunction(uOutputs[lastLayerIndex][__neuronIndex], true, _);
