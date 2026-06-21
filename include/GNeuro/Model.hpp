@@ -246,6 +246,16 @@ public:
   }
 
   /*
+   * Fill weights and biases of model with 0.
+   */
+  void Zero() {
+    std::lock_guard<std::mutex> guard(m_mutex);
+    for (size_t i = 0; i < m_layers.Size(); i++) {
+      m_layers[i].Zero();
+    }
+  }
+
+  /*
    * Calculate the outputs of the network in a GMath::Matrix structure for each
    * layer.
    */

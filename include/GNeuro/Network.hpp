@@ -10,12 +10,15 @@
 #include "GNeuro/Model.hpp"
 #include "GNeuro/Random.hpp"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <functional>
 #include <future>
 #include <mutex>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace GNeuro {
@@ -144,8 +147,19 @@ public:
   void Train(const GMath::Matrix<value_t> &_inputsBatch,
              const GMath::Matrix<value_t> &_expectedOutputsBatch,
              double _learningRate, const double _lossThreshold, const bool _randomSubBatching = true) {
+    static const auto threadFunc = [](const GNeuro::Network<value_t> &_network, const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches, const GMath::size_t _batchStart, const GMath::size_t _batchEnd, const double _learningRate) {
+      GMath::DynamicArray<Model<value_t>> models;
+
+      for (GMath::size_t __batchIndex = _batchStart; __batchIndex < _batchEnd; __batchIndex++) {
+        models.EmplaceBack(_network.BackPropagate(_inputBatches[__batchIndex], _expectedOutputBatches[__batchIndex], _learningRate));
+      }
+
+      return models;
+    };
+
     std::lock_guard<std::mutex> guard(m_training);
     const auto BATCH_COUNT = _inputsBatch.Shape().Rows;
+    static const auto THREAD_COUNT = std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 1;
 
     if (BATCH_COUNT != _expectedOutputsBatch.Shape().Rows) {
       throw std::runtime_error("Inputs and expected outputs batch size doesn't match.");
@@ -162,31 +176,61 @@ public:
     std::cout << std::endl;
 
     while (meanLoss > _lossThreshold) {
-      GMath::DynamicArray<std::future<GNeuro::Model<value_t>>> threads;
+      GMath::DynamicArray<std::future<GMath::DynamicArray<Model<value_t>>>> threads;
       GMath::DynamicArray<GNeuro::Model<value_t>> models;
 
-      GMath::size_t batchStart = GNeuro::Random(0.0, (double)BATCH_COUNT - 1);
-      GMath::size_t batchEnd = GNeuro::Random((double)batchStart, (double)BATCH_COUNT - 1);
+      GMath::size_t batchStart;
+      GMath::size_t batchEnd;
 
       if (_randomSubBatching) {
-        // Random sub-batch run
-        for (size_t __batchIndex = batchStart; __batchIndex < batchEnd + 1; __batchIndex++) {
-          threads.EmplaceBack(std::async(std::launch::async, &Network::BackPropagate, this, (_inputsBatch[__batchIndex]), (_expectedOutputsBatch[__batchIndex]), _learningRate));
+        do {
+          batchStart = std::round(GNeuro::Random(0.0, (double)BATCH_COUNT - 1));
+          batchEnd = std::round(GNeuro::Random((double)batchStart, (double)BATCH_COUNT));
+        } while( batchStart == batchEnd );
+
+        const auto randomBatchSize = (batchEnd - batchStart) / THREAD_COUNT + 1;
+
+        for (GMath::size_t __threadIndex = 0; __threadIndex < THREAD_COUNT; __threadIndex++) {
+          const GMath::size_t s = batchStart + __threadIndex * randomBatchSize, e = (s + randomBatchSize) > batchEnd ? batchEnd : (s + randomBatchSize);
+          threads.EmplaceBack(std::async(std::launch::async, threadFunc, std::ref(*this), std::ref(_inputsBatch), std::ref(_expectedOutputsBatch), s, e, _learningRate));
+        }
+
+        for (GMath::size_t __threadIndex = 0; __threadIndex < threads.Size(); __threadIndex++) {
+          const GMath::DynamicArray<Model<value_t>> m = threads[__threadIndex].get();
+
+          for (GMath::size_t __modelIndex = 0; __modelIndex < m.Size(); __modelIndex++) {
+            models.EmplaceBack(m[__modelIndex]);
+          }
+        }
+
+        threads.Clear();
+
+        {
+          std::lock_guard<std::mutex> guard(m_mutex);
+          m_model = Average(models);
         }
       }
 
-      // Full epoch 
-      for (size_t __batchIndex = 0; __batchIndex < BATCH_COUNT; __batchIndex++) {
-        threads.EmplaceBack(std::async(std::launch::async, &Network::BackPropagate, this, (_inputsBatch[__batchIndex]), (_expectedOutputsBatch[__batchIndex]), _learningRate));
+      batchStart = 0;
+      batchEnd = BATCH_COUNT;
+
+      const auto batchSize = (batchEnd - batchStart) / THREAD_COUNT + 1;
+
+      for (GMath::size_t __threadIndex = 0; __threadIndex < THREAD_COUNT; __threadIndex++) {
+        const GMath::size_t s = batchStart + __threadIndex * batchSize, e = (s + batchSize) > batchEnd ? batchEnd : (s + batchSize);
+        threads.EmplaceBack(std::async(std::launch::async, threadFunc, std::ref(*this), std::ref(_inputsBatch), std::ref(_expectedOutputsBatch), s, e, _learningRate));
       }
 
-      for (size_t __threadIndex = 0; __threadIndex < threads.Size(); __threadIndex++) {
-        models.PushBack(threads[__threadIndex].get());
+      for (GMath::size_t __threadIndex = 0; __threadIndex < threads.Size(); __threadIndex++) {
+        const GMath::DynamicArray<Model<value_t>> m = threads[__threadIndex].get();
+
+        for (GMath::size_t __modelIndex = 0; __modelIndex < m.Size(); __modelIndex++) {
+          models.EmplaceBack(m[__modelIndex]);
+        }
       }
 
       {
         std::lock_guard<std::mutex> guard(m_mutex);
-
         m_model = Average(models);
       }
 
@@ -196,6 +240,10 @@ public:
       std::cout << "Loss: " << GParsing::to_string(meanLoss) << '\n';
       std::cout << "Learning Rate: " << GParsing::to_string(_learningRate) << std::endl;
       previousMeanLoss = meanLoss;
+    }
+
+    if (std::isnan(meanLoss)) {
+      throw std::runtime_error("Error in training, loss is not a number.");
     }
   }
 
@@ -292,60 +340,82 @@ private:
    */
   [[nodiscard]]
   GNeuro::Model<value_t> Average(const GMath::DynamicArray<GNeuro::Model<value_t>> &_models) const {
+    static const bool THREADING_ENABLED = false;
+    static const auto THREAD_COUNT = std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 1;
+
+    static const auto threadFunc = [](const GMath::DynamicArray<GNeuro::Model<value_t>> &_models, GNeuro::Model<value_t> _avg) {
+      for (GMath::size_t __modelIndex = 0; __modelIndex < _models.Size(); __modelIndex++) {
+        for (GMath::size_t __layerIndex = 0; __layerIndex < _models[__modelIndex].GetLayerCount(); __layerIndex++) {
+          for (GMath::size_t __neuronIndex = 0; __neuronIndex < _models[__modelIndex].GetNeuronCount(__layerIndex); __neuronIndex++) {
+            GMath::DynamicArray<value_t> weights(_models[__modelIndex].GetWeightCount(__layerIndex));
+            value_t bias = _models[__modelIndex].GetBias(__layerIndex, __neuronIndex) / _models.Size();
+
+            for (GMath::size_t __weightIndex = 0; __weightIndex < _models[__modelIndex].GetWeightCount(__layerIndex); __weightIndex++) {
+              weights[__weightIndex] = _models[__modelIndex].GetWeight(__layerIndex, __neuronIndex, __weightIndex) / _models.Size();
+            }
+
+            _avg.SetBias(_avg.GetBias(__layerIndex, __neuronIndex) + bias, __layerIndex, __neuronIndex);
+
+            for (GMath::size_t __weightIndex = 0; __weightIndex < weights.Size(); __weightIndex++) {
+              _avg.SetWeight(_avg.GetWeight(__layerIndex, __neuronIndex, __weightIndex) + weights[__weightIndex], __layerIndex, __neuronIndex, __weightIndex);
+            }
+          }
+        }
+      }
+
+      return std::move(_avg);
+    };
+
     if (_models.Size() < 1) {
       throw std::runtime_error("No models to calculate average...");
     }
 
+    if (_models.Size() == 1) {
+      return _models[0];
+    }
+
     // Copy the first model to obtain the correct shape and activations.
-    std::mutex avg_mutex;
     GNeuro::Model<value_t> avg = _models[0];
+    avg.Zero();
 
-    // Devide first model with model count.
-    for (size_t __layerIndex = 0; __layerIndex < avg.GetLayerCount(); __layerIndex++) {
-      for (size_t __neuronIndex = 0; __neuronIndex < avg.GetNeuronCount(__layerIndex); __neuronIndex++) {
-        value_t bias = avg.GetBias(__layerIndex, __neuronIndex);
-        bias /= _models.Size();
-        avg.SetBias(bias, __layerIndex, __neuronIndex);
+    if (_models.Size() <= THREAD_COUNT * 8 || !THREADING_ENABLED) {
+      for (GMath::size_t __modelIndex = 0; __modelIndex < _models.Size(); __modelIndex++) {
+        for (GMath::size_t __layerIndex = 0; __layerIndex < _models[__modelIndex].GetLayerCount(); __layerIndex++) {
+          for (GMath::size_t __neuronIndex = 0; __neuronIndex < _models[__modelIndex].GetNeuronCount(__layerIndex); __neuronIndex++) {
+            GMath::DynamicArray<value_t> weights(_models[__modelIndex].GetWeightCount(__layerIndex));
+            value_t bias = _models[__modelIndex].GetBias(__layerIndex, __neuronIndex) / _models.Size();
 
-        for (size_t __weightIndex = 0; __weightIndex < avg.GetWeightCount(__layerIndex); __weightIndex++) {
-          value_t weight = avg.GetWeight(__layerIndex, __neuronIndex, __weightIndex);
-          weight /= _models.Size();
-          avg.SetWeight(weight, __layerIndex, __neuronIndex, __weightIndex);
-        }
-      }
-    }
+            for (GMath::size_t __weightIndex = 0; __weightIndex < _models[__modelIndex].GetWeightCount(__layerIndex); __weightIndex++) {
+              weights[__weightIndex] = _models[__modelIndex].GetWeight(__layerIndex, __neuronIndex, __weightIndex) / _models.Size();
+            }
 
-    // Add all of the other models to the average.
-    GMath::DynamicArray<std::future<void>> threads(_models.Size() - 1);
-    const auto threadFunc = [](const GMath::DynamicArray<GNeuro::Model<value_t>> *_models, const size_t __modelIndex, GNeuro::Model<value_t> *_avg, std::mutex *_mutex) {
-      for (size_t __layerIndex = 0; __layerIndex < (*_models)[__modelIndex].GetLayerCount(); __layerIndex++) {
-        for (size_t __neuronIndex = 0; __neuronIndex < (*_models)[__modelIndex].GetNeuronCount(__layerIndex); __neuronIndex++) {
-          GMath::DynamicArray<value_t> weights((*_models)[__modelIndex].GetWeightCount(__layerIndex));
-          value_t bias = (*_models)[__modelIndex].GetBias(__layerIndex, __neuronIndex) / _models->Size();
+            avg.SetBias(avg.GetBias(__layerIndex, __neuronIndex) + bias, __layerIndex, __neuronIndex);
 
-          for (size_t __weightIndex = 0; __weightIndex < (*_models)[__modelIndex].GetWeightCount(__layerIndex); __weightIndex++) {
-            weights[__weightIndex] = (*_models)[__modelIndex].GetWeight(__layerIndex, __neuronIndex, __weightIndex) / _models->Size();
-          }
-
-          std::lock_guard<std::mutex> guard(*_mutex);
-          _avg->SetBias(_avg->GetBias(__layerIndex, __neuronIndex) + bias, __layerIndex, __neuronIndex);
-
-          for (size_t __weightIndex = 0; __weightIndex < weights.Size(); __weightIndex++) {
-            _avg->SetWeight(_avg->GetWeight(__layerIndex, __neuronIndex, __weightIndex) + weights[__weightIndex], __layerIndex, __neuronIndex, __weightIndex);
+            for (GMath::size_t __weightIndex = 0; __weightIndex < weights.Size(); __weightIndex++) {
+              avg.SetWeight(avg.GetWeight(__layerIndex, __neuronIndex, __weightIndex) + weights[__weightIndex], __layerIndex, __neuronIndex, __weightIndex);
+            }
           }
         }
       }
-    };
 
-    for (size_t __modelIndex = 1; __modelIndex < _models.Size(); __modelIndex++) {
-      threads[__modelIndex - 1] = std::async(std::launch::async, threadFunc, &_models, __modelIndex, &avg, &avg_mutex);
+      return std::move(avg);
     }
+    else {
+      GMath::DynamicArray<GNeuro::Model<value_t>> models;
+      GMath::DynamicArray<std::future<GNeuro::Model<value_t>>> threads;
+      const GMath::size_t batchSize = _models.Size() / THREAD_COUNT + 1;
 
-    for (size_t __threadIndex = 0; __threadIndex < threads.Size(); __threadIndex++) {
-      threads[__threadIndex].wait();
+      for (GMath::size_t __threadIndex = 0; __threadIndex < THREAD_COUNT; __threadIndex++) {
+        const GMath::size_t batchStart = __threadIndex * batchSize, batchEnd = (batchStart + batchSize) > _models.Size() ? _models.Size() : (batchStart + batchSize);
+        threads.EmplaceBack(std::async(std::launch::async, threadFunc, std::ref(_models), avg));
+      }
+
+      for (GMath::size_t __threadIndex = 0; __threadIndex < threads.Size(); __threadIndex++) {
+        models.EmplaceBack(threads[__threadIndex].get());
+      }
+
+      return std::move(Average(models));
     }
-
-    return avg;
   }
 
   /*
