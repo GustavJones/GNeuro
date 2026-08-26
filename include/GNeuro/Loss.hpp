@@ -4,8 +4,10 @@
  */
 
 #pragma once
+#include <stdexcept>
 #include <string>
 #include <cmath>
+#include "GMath/Matrix.hpp"
 
 namespace GNeuro {
 /*
@@ -15,14 +17,31 @@ namespace GNeuro {
  * Return "Error" -> _funcName
  */
 template<typename value_t>
-inline value_t Error(value_t _out, value_t _expected, bool _derived, std::string &_funcName) {
+inline GMath::Matrix<value_t> Error(const GMath::Matrix<value_t> &_out, const GMath::Matrix<value_t> &_expected, bool _derived, std::string &_funcName) {
   _funcName = "GNeuro::Error";
 
-  if (_derived) {
-    return 1;
-  } else {
-    return (_out - _expected);
-  }
+	if (!_out.IsRowMatrix()) {
+		throw std::runtime_error("Outputs are not a row matrix.");
+	}
+
+	if (!_expected.IsRowMatrix()) {
+		throw std::runtime_error("Expected outputs are not a row matrix");
+	}
+
+	if (_out.Shape().Columns != _expected.Shape().Columns) {
+		throw std::runtime_error("Outputs and expected outputs count do not match");
+	}
+
+	GMath::Matrix<value_t> output(_out.Shape());
+	for (GMath::size_t i = 0; i < _out.Shape().Columns; i++) {
+		if (_derived) {
+			output[0][i] = 1;
+		} else {
+			output[0][i] =  (_out[0][i] - _expected[0][i]);
+		}
+	}
+
+	return output;
 }
 
 /*
@@ -32,14 +51,31 @@ inline value_t Error(value_t _out, value_t _expected, bool _derived, std::string
  * Return "NegativeError" -> _funcName
  */
 template<typename value_t>
-inline value_t NegativeError(value_t _out, value_t _expected, bool _derived, std::string &_funcName) {
+inline GMath::Matrix<value_t> NegativeError(const GMath::Matrix<value_t> &_out, const GMath::Matrix<value_t> &_expected, bool _derived, std::string &_funcName) {
   _funcName = "GNeuro::NegativeError";
 
-  if (_derived) {
-    return -1;
-  } else {
-    return (_expected - _out);
-  }
+	if (!_out.IsRowMatrix()) {
+		throw std::runtime_error("Outputs are not a row matrix.");
+	}
+
+	if (!_expected.IsRowMatrix()) {
+		throw std::runtime_error("Expected outputs are not a row matrix");
+	}
+
+	if (_out.Shape().Columns != _expected.Shape().Columns) {
+		throw std::runtime_error("Outputs and expected outputs count do not match");
+	}
+
+	GMath::Matrix<value_t> output(_out.Shape());
+	for (GMath::size_t i = 0; i < _out.Shape().Columns; i++) {
+		if (_derived) {
+			output[0][i] = -1;
+		} else {
+			output[0][i] =  (_expected[0][i] - _out[0][i]);
+		}
+	}
+
+	return output;
 }
 
 /*
@@ -49,14 +85,39 @@ inline value_t NegativeError(value_t _out, value_t _expected, bool _derived, std
  * Return "SquaredError" -> _funcName
  */
 template<typename value_t>
-inline value_t SquaredError(value_t _out, value_t _expected, bool _derived, std::string &_funcName) {
+inline GMath::Matrix<value_t> SquaredError(const GMath::Matrix<value_t> &_out, const GMath::Matrix<value_t> &_expected, bool _derived, std::string &_funcName) {
   _funcName = "GNeuro::SquaredError";
+
+	if (!_out.IsRowMatrix()) {
+		throw std::runtime_error("Outputs are not a row matrix.");
+	}
+
+	if (!_expected.IsRowMatrix()) {
+		throw std::runtime_error("Expected outputs are not a row matrix");
+	}
+
+	if (_out.Shape().Columns != _expected.Shape().Columns) {
+		throw std::runtime_error("Outputs and expected outputs count do not match");
+	}
 
   std::string tmp;
   if (_derived) {
-    return Error(_out, _expected, true, tmp) * 2 * Error(_out, _expected, false, tmp);
+		auto error = Error(_out, _expected, false, tmp);
+		auto errorSlope = Error(_out, _expected, true, tmp);
+
+		for (GMath::size_t i = 0; i < error.Shape().Columns; i++) {
+			error[0][i] *= errorSlope[0][i] * 2;
+		}
+
+		return error;
   } else {
-    return std::pow(Error(_out, _expected, false, tmp), 2);
+		auto output = Error(_out, _expected, false, tmp);
+
+		for (GMath::size_t i = 0; i < output.Shape().Columns; i++) {
+			output[0][i] = std::pow(output[0][i], 2);
+		}
+
+    return output;
   }
 }
 
@@ -67,14 +128,39 @@ inline value_t SquaredError(value_t _out, value_t _expected, bool _derived, std:
  * Return "SquaredNegativeError" -> _funcName
  */
 template<typename value_t>
-inline value_t SquaredNegativeError(value_t _out, value_t _expected, bool _derived, std::string &_funcName) {
+inline GMath::Matrix<value_t> SquaredNegativeError(const GMath::Matrix<value_t> &_out, const GMath::Matrix<value_t> &_expected, bool _derived, std::string &_funcName) {
   _funcName = "GNeuro::SquaredNegativeError";
+
+	if (!_out.IsRowMatrix()) {
+		throw std::runtime_error("Outputs are not a row matrix.");
+	}
+
+	if (!_expected.IsRowMatrix()) {
+		throw std::runtime_error("Expected outputs are not a row matrix");
+	}
+
+	if (_out.Shape().Columns != _expected.Shape().Columns) {
+		throw std::runtime_error("Outputs and expected outputs count do not match");
+	}
 
   std::string tmp;
   if (_derived) {
-    return NegativeError(_out, _expected, true, tmp) * 2 * NegativeError(_out, _expected, false, tmp);
+		auto error = NegativeError(_out, _expected, false, tmp);
+		auto errorSlope = NegativeError(_out, _expected, true, tmp);
+
+		for (GMath::size_t i = 0; i < error.Shape().Columns; i++) {
+			error[0][i] *= errorSlope[0][i] * 2;
+		}
+
+    return error;
   } else {
-    return std::pow(NegativeError(_out, _expected, false, tmp), 2);
+		auto output = NegativeError(_out, _expected, false, tmp);
+
+		for (GMath::size_t i = 0; i < output.Shape().Columns; i++) {
+			output[0][i] = std::pow(output[0][i], 2);
+		}
+
+    return output;
   }
 }
 } // namespace GNeuro

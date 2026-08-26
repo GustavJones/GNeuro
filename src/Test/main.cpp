@@ -1,6 +1,6 @@
-#include "GNeuro/Functions.hpp"
-#include "GNeuro/GNeuro.hpp"
-#include <stdexcept>
+#include "GNeuro/Network.hpp"
+#include "GNeuro/Activation.hpp"
+#include "GNeuro/Loss.hpp"
 
 // Example data for an XOR network
 // Trains a model to produce the output of an XOR operation
@@ -19,33 +19,17 @@ static const GMath::Matrix<double> expectedOutputs = {
 };
 
 int main(int argc, char *argv[]) {
-  GNeuro::Network<double> n;
-  GNeuro::Model<double> model;
+	std::atomic<bool> running = true;
 
-  GNeuro::Functions<double>::loss_t loss;
-  try {
-    model.Load("model.json", loss, model.GetLossFunctionList(), model.GetActivationFunctionList());
-  }
-  catch (const std::runtime_error &_e) {
-    std::cout << _e.what() << std::endl;
-    model.AddLayer(GNeuro::Layer<double>(2, GNeuro::Sigmoid));
-    model.AddLayer(GNeuro::Layer<double>(1, GNeuro::Sigmoid));
-    model.FitLayers(2);
-    model.Randomize();
-  }
+	GNeuro::Network<double> network;
+	network.AddLayer(2, GNeuro::LeakyReLu);
+	network.AddLayer(2, GNeuro::LeakyReLu);
+	network.AddLayer(1, GNeuro::Sigmoid);
+	network.CreateModel(GNeuro::SquaredError, 2, true);
 
-  n.SetModel(model);
-  n.SetLoss(GNeuro::SquaredError);
-
-  n.Train(inputs, expectedOutputs, 0.01, 0.001);
- 
-  for (size_t i = 0; i < inputs.Shape().Rows; i++) {
-    std::cout << n.Calculate(inputs[i]) << std::endl;
-  }
-
-  model = n.GetModel();
-
-  model.Save("model.json", n.GetLoss());
+	network.Train(inputs, expectedOutputs, 0.1, 0.00001, running);
+	// network.Train(inputs, expectedOutputs, 0.05, 10000);
+	std::cout << network.Calculate(inputs) << std::endl;
   
   return 0;
 }

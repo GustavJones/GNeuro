@@ -1,556 +1,467 @@
 #pragma once
-#include "GMath/DynamicArray.hpp"
-#include "GMath/Matrix.hpp"
-#include "GMath/Types.hpp"
-#include "GNeuro/Activation.hpp"
-#include "GNeuro/Loss.hpp"
-#include "GNeuro/Functions.hpp"
-#include "GNeuro/Layer.hpp"
-#include "GParsing/JSON/JSONObject.hpp"
-#include "GParsing/JSON/JSONArray.hpp"
-#include <algorithm>
-#include <mutex>
-#include <stdexcept>
-#include <utility>
+#include "FunctionType.hpp"
+#include "Layer.hpp"
 
 namespace GNeuro {
 template <typename value_t> class Model {
+public:
+	class ModelError : public std::runtime_error {
+	public:
+		ModelError(const std::string &_methodName, const std::string &_errorString) : std::runtime_error("(GNeuro::Model): " + _methodName + " - " + _errorString) {}
+	};
+
+	class ModelStructure {
+	private:
+		GMath::DynamicArray<GMath::DynamicArray<value_t>> m_structure;
+
+	public:
+		/*
+		 * Set the dimentions of the structure.
+		 */
+		void Setup(const GMath::DynamicArray<Layer<value_t>> &_layers) {
+			m_structure.Resize(_layers.Size());
+
+			for (GMath::size_t l = 0; l < m_structure.Size(); l++) {
+				m_structure[l].Resize(_layers[l].Size());
+			}
+		}
+
+		/*
+		 * Set the amount of layers in the structure.
+		 */
+		void SetLayers(const GMath::size_t &_layerCount) {
+			m_structure.Resize(_layerCount);
+		}
+
+		/*
+		 * Returns the amount of layers in the structure.
+		 */
+		GMath::size_t Layers() const {
+			return m_structure.Size();
+		}
+
+		/*
+		 * Returns the amount of neurons in a layer, in the structure.
+		 */
+		GMath::size_t Neurons(const GMath::size_t &_layerIndex) const {
+			const static std::string METHOD_NAME = "ModelStructure::Neurons()";
+
+			if (_layerIndex < 0 || _layerIndex >= Layers()) {
+				throw ModelError(METHOD_NAME, "Layer index out of bounds.");
+			}
+
+			return m_structure[_layerIndex].Size();
+		}
+
+		/*
+		 * Set a layer in the structure.
+		 */
+		void SetLayer(const GMath::DynamicArray<value_t> &_layer, const GMath::size_t &_layerIndex) {
+			const static std::string METHOD_NAME = "ModelStructure::SetLayer()";
+
+			if (_layerIndex < 0 || _layerIndex >= Layers()) {
+				throw ModelError(METHOD_NAME, "Layer index out of bounds.");
+			}
+
+			m_structure[_layerIndex] = _layer;
+		}
+
+		/*
+		 * Retrieve a layer from the structure.
+		 */
+		const GMath::DynamicArray<value_t> &GetLayer(const GMath::size_t &_layerIndex) const {
+			const static std::string METHOD_NAME = "ModelStructure::GetLayer()";
+
+			if (_layerIndex < 0 || _layerIndex >= Layers()) {
+				throw ModelError(METHOD_NAME, "Layer index out of bounds.");
+			}
+
+			return m_structure[_layerIndex];
+		}
+	};
+
 private:
-  GMath::DynamicArray<typename Functions<value_t>::activation_t> m_activationFunctionList = {
-    GNeuro::None,
-    GNeuro::Sigmoid,
-    GNeuro::ReLu,
-    GNeuro::LeakyReLu,
-    GNeuro::TanH
-  };
+	GMath::DynamicArray<Layer<value_t>> m_layers;
+	typename GNeuro::FunctionType<value_t>::loss_t m_lossFunction = nullptr;
 
-  GMath::DynamicArray<typename Functions<value_t>::loss_t> m_lossFunctionList = {
-    GNeuro::Error,
-    GNeuro::NegativeError,
-    GNeuro::SquaredError,
-    GNeuro::SquaredNegativeError
-  };
+	/*
+	 * Check for a valid model object.
+	 */
+	void _Check() {
+		const static std::string METHOD_NAME = "_Check()";
 
-  GMath::DynamicArray<Layer<value_t>> m_layers;
-  mutable std::mutex m_mutex;
+		if (m_layers.Size() < 1) {
+			throw ModelError(METHOD_NAME, "Empty model.");
+		}
+
+		if (!m_lossFunction) {
+			throw ModelError(METHOD_NAME, "Model has no loss function.");
+		}
+	}
+
+	// General slope calculations
+	// O = A(b + (i1 * w1) + (i2 * w2) + ... + (in * wn))
+	// dO/dwn = A'(b + (i1 * w1) + (i2 * w2) + ... + (in * wn)) * in
+	// dO/db = A'(b + (i1 * w1) + (i2 * w2) + ... + (in * wn))
+	// dO/din = A'(b + (i1 * w1) + (i2 * w2) + ... + (in * wn)) * wn
+
+	// Last layer
+	// L = L(O1 + O2 + ... + On)
+	// dL/dwnm = L'(O1 + O2 + ... + On) * dOn/dbn * inm
+	
+	// e.g
+	// 1 input, 2 neurons, 3 neurons - Layer network
+	//
+	// L = L(O11 + O12 + O13)
+	// O1n = A1n(b1n + (O21 * w1n1) + (O22 * w1n2))
+	// O2m = A2m(b2m + (i1 * w2m1) + (i1 * w2m2))
+	// 
+	// L = L(
+	//   A11(b11 + 
+	//     (A21(b21 + (i1 * w211) + (i2 * w212)) * w111) + 
+	//     (A22(b22 + (i1 * w221) + (i2 * w222)) * w112)
+	//   ) + 
+	//
+	//   A12(b12 + 
+	//     (A21(b21 + (i1 * w211) + (i2 * w212)) * w121) + 
+	//     (A22(b22 + (i1 * w221) + (i2 * w222)) * w122)
+	//   ) + 
+	//
+	//   A13(b13 + 
+	//     (A21(b21 + (i1 * w211) + (i2 * w212)) * w131) + 
+	//     (A22(b22 + (i1 * w221) + (i2 * w222)) * w132)
+	//   )
+	// )
+	//
+	// dL/di1 = 
+	//   L'(
+	//     A11(b11 + 
+	//       (A21(b21 + (i1 * w211) + (i2 * w212)) * w111) + 
+	//       (A22(b22 + (i1 * w221) + (i2 * w222)) * w112)
+	//     ) + 
+	//  
+	//     A12(b12 + 
+	//       (A21(b21 + (i1 * w211) + (i2 * w212)) * w121) + 
+	//       (A22(b22 + (i1 * w221) + (i2 * w222)) * w122)
+	//     ) + 
+	//  
+	//     A13(b13 + 
+	//       (A21(b21 + (i1 * w211) + (i2 * w212)) * w131) + 
+	//       (A22(b22 + (i1 * w221) + (i2 * w222)) * w132)
+	//     )
+	//   ) *
+	//       A11'(b11 + 
+	//         (A21(b21 + (i1 * w211) + (i2 * w212)) * w111) + 
+	//         (A22(b22 + (i1 * w221) + (i2 * w222)) * w112)
+	//       ) *
+	//         A21'(b21 + (i1 * w211) + (i2 * w212)) * w111 *
+	//				   w211
+	//         + 
+	//         A22'(b22 + (i1 * w221) + (i2 * w222)) * w112 *
+	//           w221
+	//       + 
+	//    
+	//       A12'(b12 + 
+	//         (A21(b21 + (i1 * w211) + (i2 * w212)) * w121) + 
+	//         (A22(b22 + (i1 * w221) + (i2 * w222)) * w122)
+	//       ) * 
+	//         A21'(b21 + (i1 * w211) + (i2 * w212)) * w121 *
+	//				   w211
+	//         +
+	//         A22'(b22 + (i1 * w221) + (i2 * w222)) * w122 *
+	//           w221
+	//       + 
+	//    
+	//       A13'(b13 + 
+	//         (A21(b21 + (i1 * w211) + (i2 * w212)) * w131) + 
+	//         (A22(b22 + (i1 * w221) + (i2 * w222)) * w132)
+	//       ) *
+	//         A21'(b21 + (i1 * w211) + (i2 * w212)) * w131 *
+	//           w211
+	//         + 
+	//         A22'(b22 + (i1 * w221) + (i2 * w222)) * w132 *
+	//					 w221
+	
+
+	// General slope calculations
+	// O = A(b + (i1 * w1) + (i2 * w2) + ... + (in * wn))
+	// dO/dwn = A'(b + (i1 * w1) + (i2 * w2) + ... + (in * wn)) * in
+	// dO/db = A'(b + (i1 * w1) + (i2 * w2) + ... + (in * wn))
+	// dO/din = A'(b + (i1 * w1) + (i2 * w2) + ... + (in * wn)) * wn
+
+	/*
+	 * Calculate the loss slope for a certain neuron in the last layer.
+	 * IE - dLoss/dOutput_n
+	 */
+	GMath::Matrix<value_t> _LossSlope(const GMath::Matrix<value_t> &_modelOutputs, const GMath::Matrix<value_t> &_expectedOutputs) {
+		const static std::string METHOD_NAME = "_LossSlope()";
+
+		try {
+			_Check();
+		} catch (...) {
+			throw ModelError(METHOD_NAME, "Model checks failed.");
+		}
+
+		if (!_modelOutputs.IsRowMatrix()) {
+			throw ModelError(METHOD_NAME, "Outputs are not a row matrix.");
+		}
+
+		if (!_expectedOutputs.IsRowMatrix()) {
+			throw ModelError(METHOD_NAME, "Expected outputs are not a row matrix.");
+		}
+
+		std::string _;
+		GMath::Matrix<value_t> lossSlopes = m_lossFunction(_modelOutputs, _expectedOutputs, true, _);
+
+		for (GMath::size_t i = 0; i < lossSlopes.Shape().Columns; i++) {
+			lossSlopes[0][i] *= ((value_t)1.0/(value_t)lossSlopes.Shape().Columns);
+		};
+
+		return lossSlopes;
+	}
+
+	/*
+	 * Return an empty model structure for this object.
+	 */
+	[[nodiscard]]
+	ModelStructure _ModelStructure() const {
+		ModelStructure output;
+		output.Setup(m_layers);
+
+		return output;
+	}
+
+	/*
+	 * Populate activated and unactivated structures of the model.
+	 */
+	void _OutputStructures(const GMath::Matrix<value_t> &_inputs, ModelStructure &_unactivated, ModelStructure &_activated) {
+		const static std::string METHOD_NAME = "_UnactivatedStructure()";
+		
+		if (_unactivated.Layers() != m_layers.Size() || _activated.Layers() != m_layers.Size()) {
+			throw ModelError(METHOD_NAME, "Structure shape does not match model.");
+		}
+
+		for (GMath::size_t l = 0; l < m_layers.Size(); l++) {
+			if (_unactivated.Neurons(l) != m_layers[l].Size() || _activated.Neurons(l) != m_layers[l].Size()) {
+				throw ModelError(METHOD_NAME, "Structure shape does not match model.");
+			}
+		}
+
+		Layer<value_t> &firstLayer = m_layers[0];
+		GMath::Matrix<value_t> unactivated = firstLayer.CalculateLayer(_inputs, false);
+		GMath::Matrix<value_t> activated = firstLayer.CalculateLayer(unactivated);
+		_unactivated.SetLayer(unactivated[0], 0);
+		_activated.SetLayer(activated[0], 0);
+
+		for (GMath::size_t l = 1; l < m_layers.Size(); l++) {
+			Layer<value_t> &layer = m_layers[l];
+			unactivated = layer.CalculateLayer(activated, false);
+			activated = layer.CalculateLayer(unactivated);
+
+			_unactivated.SetLayer(unactivated[0], l);
+			_activated.SetLayer(activated[0], l);
+		}
+	}
+
+	/*
+	 * Populate a model structure with unactivated gradients of the loss to unactivated outputs.
+	 * IE dLoss/dUnactivatedOutput
+	 */
+	void _PopulateUnactivatedGradientStructure(ModelStructure &_structure, const ModelStructure &_activatedOutputs, const ModelStructure &_unactivatedOutputs, const GMath::Matrix<value_t> &_expectedOutputs) {
+		// Last layer
+		GMath::Matrix<value_t> gradients = _LossSlope(_activatedOutputs.GetLayer(m_layers.Size() - 1), _expectedOutputs);
+		GMath::Matrix<value_t> activationGradients = m_layers[m_layers.Size() - 1].ActivationSlopes(_unactivatedOutputs.GetLayer(m_layers.Size() - 1));
+
+		for (GMath::size_t n = 0; n < m_layers[m_layers.Size() - 1].Size(); n++) {
+			gradients[0][n] *= activationGradients[0][n];
+		}
+
+		_structure.SetLayer(gradients[0], _structure.Layers() - 1);
+
+		// All other layers
+		for (int64_t l = static_cast<int64_t>(m_layers.Size()) - 2; l >= 0; l--) {
+			gradients = m_layers[l].ActivationSlopes(_unactivatedOutputs.GetLayer(l));;
+
+			for (GMath::size_t i = 0; i < m_layers[l].Size(); i++) {
+				value_t previousLayerInputSlopeSum = 0;
+				for (GMath::size_t n = 0; n < m_layers[l + 1].Size(); n++) {
+					previousLayerInputSlopeSum += m_layers[l + 1].InputSlope(_structure.GetLayer(l + 1)[n], n, i);
+				}
+				
+				gradients[0][i] *= previousLayerInputSlopeSum;
+			}
+
+			_structure.SetLayer(gradients[0], l);
+		}
+	}
 
 public:
-  Model() = default;
-
-  Model(Model &&_m) {
-    std::lock_guard<std::mutex> guard(_m.m_mutex);
-
-    m_activationFunctionList = _m.m_activationFunctionList;
-    m_lossFunctionList = _m.m_lossFunctionList;
-    m_layers = std::move(_m.m_layers);
-  }
-
-  Model(const Model &_m) {
-    std::lock_guard<std::mutex> guard(_m.m_mutex);
-
-    m_activationFunctionList = _m.m_activationFunctionList;
-    m_lossFunctionList = _m.m_lossFunctionList;
-    m_layers = _m.m_layers;
-  }
-
-  Model &operator=(Model &&_m) {
-    if (this == &_m) {
-      return *this;
-    }
-
-    GMath::DynamicArray<typename Functions<value_t>::activation_t> activationCopy;
-    GMath::DynamicArray<typename Functions<value_t>::loss_t> lossCopy;
-    GMath::DynamicArray<Layer<value_t>> layersCopy;
-
-    {
-      std::lock_guard<std::mutex> guard(_m.m_mutex);
-      activationCopy = _m.m_activationFunctionList;
-      lossCopy = _m.m_lossFunctionList;
-      layersCopy = std::move(_m.m_layers);
-    }
-
-    {
-      std::lock_guard<std::mutex> guard(m_mutex);
-      m_activationFunctionList = std::move(activationCopy);
-      m_lossFunctionList = std::move(lossCopy);
-      m_layers = std::move(layersCopy);
-    }
-
-    return *this;
-  }
-
-  Model &operator=(const Model &_m) {
-    if (this == &_m) {
-      return *this;
-    }
-
-    GMath::DynamicArray<typename Functions<value_t>::activation_t> activationCopy;
-    GMath::DynamicArray<typename Functions<value_t>::loss_t> lossCopy;
-    GMath::DynamicArray<Layer<value_t>> layersCopy;
-
-    {
-      std::lock_guard<std::mutex> guard(_m.m_mutex);
-      activationCopy = _m.m_activationFunctionList;
-      lossCopy = _m.m_lossFunctionList;
-      layersCopy = _m.m_layers;
-    }
-
-    {
-      std::lock_guard<std::mutex> guard(m_mutex);
-      m_activationFunctionList = std::move(activationCopy);
-      m_lossFunctionList = std::move(lossCopy);
-      m_layers = std::move(layersCopy);
-    }
-
-    return *this;
-  }
-
-  ~Model() = default;
-
-  /*
-   * Get GNeuro activation function list.
-   */
-  GMath::DynamicArray<typename Functions<value_t>::activation_t> GetActivationFunctionList() const {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    return m_activationFunctionList;
-  }
-
-  /*
-   * Get GNeuro loss function list.
-   */
-  GMath::DynamicArray<typename Functions<value_t>::loss_t> GetLossFunctionList() const {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    return m_lossFunctionList;
-  }
-
-  /*
-   * Get the amount of layers in the model.
-   */
-  [[nodiscard]]
-  GMath::size_t GetLayerCount() const { 
-    std::lock_guard<std::mutex> guard(m_mutex);
-    return m_layers.Size(); 
-  }
-
-  /*
-   * Get the amount of neurons in a layer.
-   */
-  [[nodiscard]]
-  GMath::size_t GetNeuronCount(const GMath::size_t _layerIndex) const { 
-    std::lock_guard<std::mutex> guard(m_mutex);
-    return m_layers[_layerIndex].GetSize(); 
-  }
-
-  /*
-   * Get the amount of weights for a neuron in a layer.
-   */
-  [[nodiscard]]
-  GMath::size_t GetWeightCount(const GMath::size_t _layerIndex) const {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    return m_layers[_layerIndex].GetWeightCount();
-  }
-
-  /*
-   * Get activation function for _neuronIndex from _layerIndex.
-   */
-  [[nodiscard]]
-  typename Functions<value_t>::activation_t GetActivationFunction(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex) const {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    return m_layers[_layerIndex].GetActivationFunction(_neuronIndex);
-  }
-
-  /*
-   * Set activation function for _neuronIndex from _layerIndex.
-   */
-  void SetActivationFunction(const typename Functions<value_t>::activation_t _activationFunction, const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex) {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    return m_layers[_layerIndex].SetActivationFunction(_activationFunction, _neuronIndex);
-  }
-
-  /*
-   * Get the weight value of a specific neuron in a layer with a specific weight index.
-   */
-  [[nodiscard]]
-  value_t GetWeight(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex, const GMath::size_t _weightIndex) const {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    return m_layers[_layerIndex].GetWeight(_neuronIndex, _weightIndex);
-  }
-
-  /*
-   * Set the weight for a specific neuron, from a specific layer and weight index.
-   */
-  void SetWeight(const value_t _value, const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex, const GMath::size_t _weightIndex) {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    m_layers[_layerIndex].SetWeight(_value, _neuronIndex, _weightIndex);
-  }
-
-  /*
-   * Get the bias value of a specific neuron in a layer.
-   */
-  [[nodiscard]]
-  value_t GetBias(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex) const {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    return m_layers[_layerIndex].GetBias(_neuronIndex);
-  }
-
-  /*
-   * Set the bias for a specific neuron index, from a specific layer.
-   */
-  void SetBias(const value_t _value, const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex) {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    m_layers[_layerIndex].SetBias(_value, _neuronIndex);
-  }
-
-  /*
-   * Removes all layers from the model.
-   */
-  void ClearLayers() { 
-    std::lock_guard<std::mutex> guard(m_mutex);
-    m_layers.Clear(); 
-  }
-
-  /*
-   * Add a new layer to the end of the model.
-   */
-  void AddLayer(const GNeuro::Layer<value_t> &_layer) {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    m_layers.PushBack(_layer);
-  }
-
-  /*
-   * Update layer weights to fit an input amount and connect each layer's
-   * outputs to the next's inputs.
-   */
-  void FitLayers(const GMath::size_t _inputCount) {
-    std::lock_guard<std::mutex> guard(m_mutex);
-
-    if (m_layers.Size() <= 0) {
-      throw std::runtime_error("Empty model...");
-    }
-
-    m_layers[0].FitLayer(_inputCount);
-
-    for (size_t i = 1; i < m_layers.Size(); i++) {
-      m_layers[i].FitLayer(m_layers[i - 1].GetSize());
-    }
-  }
-
-  /*
-   * Fill weights and biases of model with random values.
-   */
-  void Randomize() {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    for (size_t i = 0; i < m_layers.Size(); i++) {
-      m_layers[i].Randomize();
-    }
-  }
-
-  /*
-   * Fill weights and biases of model with 0.
-   */
-  void Zero() {
-    std::lock_guard<std::mutex> guard(m_mutex);
-    for (size_t i = 0; i < m_layers.Size(); i++) {
-      m_layers[i].Zero();
-    }
-  }
-
-  /*
-   * Calculate the outputs of the network in a GMath::Matrix structure for each
-   * layer.
-   */
-  void Calculate(const GMath::Matrix<value_t> &_inputs, GMath::DynamicArray<GMath::DynamicArray<value_t>> &_unactivatedOutputs, GMath::DynamicArray<GMath::DynamicArray<value_t>> &_activatedOutputs) const {
-    std::lock_guard<std::mutex> guard(m_mutex);
-
-    Unlocked_Calculate(_inputs, _unactivatedOutputs, _activatedOutputs);
-  }
-
-  /*
-   * Calculate the outputs of the network in a GMath::Matrix structure for each
-   * layer.
-   */
-  [[nodiscard]]
-  GMath::DynamicArray<GMath::DynamicArray<value_t>> Calculate(const GMath::Matrix<value_t> &_inputs) const {
-    GMath::DynamicArray<GMath::DynamicArray<value_t>> _unactivatedOutputs, _activatedOutputs;
-    Calculate(_inputs, _unactivatedOutputs, _activatedOutputs);
-
-    return _activatedOutputs;
-  }
-
-  /*
-   * Calculates the average loss for each input / expected output pair.
-   */
-  [[nodiscard]]
-  value_t MeanLoss(const GMath::Matrix<value_t> &_inputsBatch, const GMath::Matrix<value_t> &_expectedOutputsBatch, const typename Functions<value_t>::loss_t _loss) const {
-    value_t meanLoss = 0;
-
-    if (_inputsBatch.Shape().Rows != _expectedOutputsBatch.Shape().Rows) {
-      throw std::runtime_error("Inputs and expected outputs batch size doesn't match.");
-    }
-
-    std::lock_guard<std::mutex> guard(m_mutex);
-    for (size_t __inputIndex = 0; __inputIndex < _inputsBatch.Shape().Rows; __inputIndex++) {
-      const GMath::DynamicArray<value_t> &inputs = _inputsBatch[__inputIndex];
-      const GMath::DynamicArray<value_t> &expectedOutputs = _expectedOutputsBatch[__inputIndex];
-
-      meanLoss += Unlocked_Loss(inputs, expectedOutputs, _loss);
-    }
-
-    meanLoss /= _inputsBatch.Shape().Rows;
-    return meanLoss;
-  }
-
-  /*
-   * Save the model to a file on disk.
-   */
-  void Save(const std::string &_filepath, const typename Functions<value_t>::loss_t _loss) {
-    const std::string MODEL_SAVE_VERSION = "v1";
-
-    GParsing::JSONObject<unsigned char> json;
-
-    // Metadata
-    GParsing::JSONObject<unsigned char> metadata;
-    metadata.AddMember("version", (GParsing::JSONString<unsigned char>)MODEL_SAVE_VERSION);
-    metadata.AddMember("type", (GParsing::JSONString<unsigned char>)"model");
-    json.AddMember("metadata", metadata);
-
-    // Loss
-    if (_loss) {
-      std::string lossFunctionName;
-      _loss(0, 0, false, lossFunctionName);
-      json.AddMember("loss", (GParsing::JSONString<unsigned char>)lossFunctionName);
-    }
-    else {
-      throw std::runtime_error("No loss function... Cannot save model.");
-    }
-
-
-    {
-      std::lock_guard<std::mutex> guard(m_mutex);
-      
-      // Weights
-      GParsing::JSONArray<unsigned char> weights;
-      for (size_t __layerIndex = 0; __layerIndex < m_layers.Size(); __layerIndex++) {
-        GParsing::JSONArray<unsigned char> layer;
-        for (size_t __neuronIndex = 0; __neuronIndex < m_layers[__layerIndex].GetSize(); __neuronIndex++) {
-          GParsing::JSONArray<unsigned char> neuron;
-          for (size_t __weightIndex = 0; __weightIndex < m_layers[__layerIndex].GetWeightCount(); __weightIndex++) {
-            neuron.PushValue((GParsing::JSONNumber<unsigned char>)m_layers[__layerIndex].GetWeight(__neuronIndex, __weightIndex));
-          }  
-          layer.PushValue(neuron);
-        }
-        weights.PushValue(layer);
-      }
-      json.AddMember("weights", weights);
-
-      // Biases
-      GParsing::JSONArray<unsigned char> biases;
-      for (size_t __layerIndex = 0; __layerIndex < m_layers.Size(); __layerIndex++) {
-        GParsing::JSONArray<unsigned char> layer;
-        for (size_t __neuronIndex = 0; __neuronIndex < m_layers[__layerIndex].GetSize(); __neuronIndex++) {
-          layer.PushValue((GParsing::JSONNumber<unsigned char>)m_layers[__layerIndex].GetBias(__neuronIndex));
-        }
-        biases.PushValue(layer);
-      }
-      json.AddMember("biases", biases);
-
-      // Activation Functions
-      GParsing::JSONArray<unsigned char> activations;
-      for (size_t __layerIndex = 0; __layerIndex < m_layers.Size(); __layerIndex++) {
-        GParsing::JSONArray<unsigned char> layer;
-        for (size_t __neuronIndex = 0; __neuronIndex < m_layers[__layerIndex].GetSize(); __neuronIndex++) {
-          std::string activationFunctionName;
-          typename Functions<value_t>::activation_t activationFunc = m_layers[__layerIndex].GetActivationFunction(__neuronIndex);
-          
-          if (activationFunc) {
-            activationFunc(0, false, activationFunctionName);
-          }
-          else {
-            GNeuro::None(0, false, activationFunctionName);
-          }
-
-          layer.PushValue((GParsing::JSONString<unsigned char>)activationFunctionName);
-        }
-        activations.PushValue(layer);
-      }
-      json.AddMember("activations", activations);
-    }
-   
-    if (!json.Serialize(_filepath)) {
-      throw std::runtime_error("Error serializing model to JSON.");
-    }
-  }
-
-  /*
-   * Load the model from a file on disk.
-   */
-  void Load(const std::string &_filepath, typename Functions<value_t>::loss_t &_loss, const GMath::DynamicArray<typename Functions<value_t>::loss_t> &_availableLossFunctions, const GMath::DynamicArray<typename Functions<value_t>::activation_t> &_availableActivationFunctions) {
-    GParsing::JSONObject<unsigned char> json;
-    if (!json.Parse(_filepath)) {
-      throw std::runtime_error("Error parsing model from JSON.");
-    }
-
-    const auto &metadataObject = json["metadata"].GetObject();
-    const auto &versionString = metadataObject["version"].GetString();
-    const auto &typeString = metadataObject["type"].GetString();
-
-    if (typeString != "model") {
-      throw std::runtime_error("Unknown JSON type.");
-    }
-
-    if (versionString == "v1") {
-      LoadV1(json, _loss, _availableLossFunctions, _availableActivationFunctions);
-    }
-    else {
-      throw std::runtime_error("Unknown model version");
-    }
-  }
-
-private:
-  /*
-   * Calculate the loss of an input / expected output pair.
-   * Not thread safe.
-   */
-  [[nodiscard]]
-  value_t Unlocked_Loss(const GMath::Matrix<value_t> &_inputs, const GMath::Matrix<value_t> &_expectedOutputs, const typename Functions<value_t>::loss_t _loss) const {
-    value_t avgLoss = 0;
-
-    GMath::DynamicArray<GMath::DynamicArray<value_t>> uOutputs, aOutputs;
-
-    Unlocked_Calculate(_inputs, uOutputs, aOutputs);
-
-    if (aOutputs.Size() <= 0) {
-      throw std::runtime_error("Unknown error when calculating outputs...");
-    }
-
-    const auto outputs = aOutputs[aOutputs.Size() - 1];
-
-    if (outputs.Size() != _expectedOutputs.Shape().Columns) {
-      throw std::runtime_error("Outputs count doesn't match expected outputs count.");
-    }
-
-    for (size_t __outputIndex = 0; __outputIndex < outputs.Size(); __outputIndex++) {
-      std::string _;
-      avgLoss += _loss(outputs[__outputIndex], _expectedOutputs[0][__outputIndex], false, _);
-    }
-
-    avgLoss /= outputs.Size();
-
-    return avgLoss;
-  }
-
-
-  /*
-   * Calculate the outputs of the network in a GMath::Matrix structure for each
-   * layer.
-   */
-  void Unlocked_Calculate(const GMath::Matrix<value_t> &_inputs, GMath::DynamicArray<GMath::DynamicArray<value_t>> &_unactivatedOutputs, GMath::DynamicArray<GMath::DynamicArray<value_t>> &_activatedOutputs) const {
-    if (m_layers.Size() <= 0) {
-      throw std::runtime_error("Empty model...");
-    }
-
-    GMath::Matrix<value_t> unactivatedOutputs, activatedOutputs;
-    _unactivatedOutputs.Clear();
-    _activatedOutputs.Clear();
-
-    const Layer<value_t> &firstLayer = m_layers[0];
-    firstLayer.Calculate(_inputs, unactivatedOutputs, activatedOutputs);
-    _unactivatedOutputs.PushBack(unactivatedOutputs[0]);
-    _activatedOutputs.PushBack(activatedOutputs[0]);
-
-    for (size_t i = 1; i < m_layers.Size(); i++) {
-      m_layers[i].Calculate(activatedOutputs, unactivatedOutputs, activatedOutputs);
-      _unactivatedOutputs.PushBack(unactivatedOutputs[0]);
-      _activatedOutputs.PushBack(activatedOutputs[0]);
-    }
-  }
-
-  /*
-   * Load a V1 save file from disk.
-   */
-  void LoadV1(const GParsing::JSONObject<unsigned char> &_json, typename Functions<value_t>::loss_t &_loss, const GMath::DynamicArray<typename Functions<value_t>::loss_t> &_availableLossFunctions, const GMath::DynamicArray<typename Functions<value_t>::activation_t> &_availableActivationFunctions) {
-    const auto lossString = _json["loss"].GetString();
-    bool found = false;
-    for (size_t __lossIndex = 0; __lossIndex < _availableLossFunctions.Size(); __lossIndex++) {
-      std::string funcName;
-      _availableLossFunctions[__lossIndex](0, 0, false, funcName);
-
-      if (lossString == funcName) {
-        _loss = _availableLossFunctions[__lossIndex];
-        found = true;
-      }
-    }
-
-    if (!found) {
-      throw std::runtime_error("Cannot parse loss function string.");
-    }
-
-    Model<value_t> modelCopy;
-
-    const auto &weights = _json["weights"].GetArray();
-    const auto &biases = _json["biases"].GetArray();
-    const auto &activation = _json["activations"].GetArray();
-
-    if (weights.GetSize() != biases.GetSize() || weights.GetSize() != activation.GetSize()) {
-      throw std::runtime_error("Malformed json model");
-    }
-
-    for (size_t __layerIndex = 0; __layerIndex < weights.GetSize(); __layerIndex++) {
-      auto &jsonWeightsLayer = weights[__layerIndex].GetArray();
-      auto &jsonBiasesLayer = biases[__layerIndex].GetArray();
-      auto &jsonActivationLayer = activation[__layerIndex].GetArray();
-
-      if (jsonWeightsLayer.GetSize() <= 0) {
-        continue;
-      }
-
-      Layer<value_t> layer(jsonWeightsLayer.GetSize());
-      layer.FitLayer(jsonWeightsLayer[0].GetArray().GetSize());
-
-      for (size_t __neuronIndex = 0; __neuronIndex < layer.GetSize(); __neuronIndex++) {
-        auto &jsonWeight = jsonWeightsLayer[__neuronIndex].GetArray();
-        auto jsonBias = jsonBiasesLayer[__neuronIndex].GetNumber();
-        auto jsonActivation = jsonActivationLayer[__neuronIndex].GetString();
-
-        layer.SetBias(jsonBias, __neuronIndex);
-
-        for (size_t __weightIndex = 0; __weightIndex < layer.GetWeightCount(); __weightIndex++) {
-          value_t weight = jsonWeight.GetValue(__weightIndex).GetNumber();
-          layer.SetWeight(weight, __neuronIndex, __weightIndex);
-        }
-
-        bool found = false;
-        for (size_t __activationIndex = 0; __activationIndex < _availableActivationFunctions.Size(); __activationIndex++) {
-          std::string funcName;
-          _availableActivationFunctions[__activationIndex](0, false, funcName);
-
-          if (jsonActivation == funcName) {
-            layer.SetActivationFunction(_availableActivationFunctions[__activationIndex], __neuronIndex);
-            found = true;
-          }
-        }
-
-        if (!found) {
-          layer.SetActivationFunction(GNeuro::None, __neuronIndex);
-        }
-      }
-
-      modelCopy.AddLayer(layer);
-    }
-
-    GMath::DynamicArray<typename Functions<value_t>::activation_t> activationCopy;
-    GMath::DynamicArray<typename Functions<value_t>::loss_t> lossCopy;
-
-    {
-      std::lock_guard<std::mutex> guard(m_mutex);
-      activationCopy = m_activationFunctionList;
-      lossCopy = m_lossFunctionList;
-    }
-
-    modelCopy.m_activationFunctionList = activationCopy;
-    modelCopy.m_lossFunctionList = lossCopy;
-
-    *this = modelCopy;
-  }
+	/*
+	 * Set the loss function to use for model.
+	 */
+	void SetLossFunction(const typename GNeuro::FunctionType<value_t>::loss_t _lossFunction) {
+		m_lossFunction = _lossFunction;
+	}
+
+	/*
+	 * Add a layer to the model.
+	 */
+	void AddLayer(const GMath::size_t &_neuronCount, const typename GNeuro::FunctionType<value_t>::activation_t _activationFunction) {
+		const static std::string METHOD_NAME = "AddLayer()";
+
+		try {
+			GNeuro::Layer<value_t> layer;
+			layer.Set(_neuronCount, _activationFunction);
+			m_layers.PushBack(layer);
+		} catch (...) {
+			throw ModelError(METHOD_NAME, "Failed to add layer.");
+		}
+
+	}
+
+	/*
+	 * Remove a layer from the model.
+	 */
+	void RemoveLayer(const GMath::size_t _index) {
+		const static std::string METHOD_NAME = "RemoveLayer()";
+
+		try {
+			m_layers.Erase(_index);
+		} catch (...) {
+			throw ModelError(METHOD_NAME, "Failed to remove layer.");
+		}
+	}
+
+	/*
+	 * Fit layers to input count.
+	 */
+	void Fit(const GMath::size_t &_inputCount) {
+		const static std::string METHOD_NAME = "Fit()";
+
+		if (_inputCount <= 0) {
+			throw ModelError(METHOD_NAME, "Cannot fit model to input count.");
+		}
+
+		m_layers[0].Fit(_inputCount);
+
+		for (GMath::size_t i = 1; i < m_layers.Size(); i++) {
+			m_layers[i].Fit(m_layers[i - 1].Size());
+		}
+	}
+
+	/*
+	 * Randomize layer parameters.
+	 */
+	void Randomize() {
+		for (GMath::size_t i = 0; i < m_layers.Size(); i++) {
+			m_layers[i].Randomize();
+		}
+	}
+
+	/*
+	 * Reset the model to invalid state.
+	 */
+	void Reset() {
+		m_layers.Clear();
+		m_lossFunction = nullptr;
+	}
+
+	/*
+	 * Get the mean loss of an input output pair.
+	 */
+	value_t MeanLoss(const GMath::Matrix<value_t> &_inputs, const GMath::Matrix<value_t> &_expected) {
+		std::string _;
+		GMath::Matrix<value_t> losses = m_lossFunction(FeedForward(_inputs), _expected, false, _);
+
+		value_t mean = 0;
+		for (GMath::size_t i = 0; i < losses[0].Size(); i++) {
+			mean += losses[0][i];
+		}
+
+		mean /= losses[0].Size();
+
+		return mean;
+	}
+
+	/*
+	 * Pass an input through the entire network's parameters.
+	 */
+	GMath::Matrix<value_t> FeedForward(const GMath::Matrix<value_t> &_inputs) {
+		const static std::string METHOD_NAME = "FeedForward()";
+
+		if (!_inputs.IsRowMatrix()) {
+			throw ModelError(METHOD_NAME, "Inputs are not a row matrix.");
+		}
+
+		try {
+			_Check();
+		} catch (ModelError &_modelError) {
+			throw ModelError(METHOD_NAME, "Model checks failed - \n" + (std::string)_modelError.what());
+		}
+
+		GMath::Matrix<value_t> outputs;
+
+		try {
+			Layer<value_t> &firstLayer = m_layers[0];
+			outputs = firstLayer.CalculateLayer(_inputs, true);
+
+			for (GMath::size_t i = 1; i < m_layers.Size(); i++) {
+				Layer<value_t> &layer = m_layers[i];
+				outputs = layer.CalculateLayer(outputs, true);
+			}
+		} catch (...) {
+			throw ModelError(METHOD_NAME, "Error running inputs through model.");	
+		}
+
+		return outputs;
+	}
+
+	/*
+	 * Modify model parameters to better suit expected outputs.
+	 */
+	void BackPropagate(const GMath::Matrix<value_t> &_inputs, const GMath::Matrix<value_t> &_expectedOutputs, const value_t &_learningRate) {
+		const static std::string METHOD_NAME = "BackPropagate()";
+
+		if (!_inputs.IsRowMatrix()) {
+			throw ModelError(METHOD_NAME, "Inputs are not a row matrix.");
+		}
+
+		if (!_expectedOutputs.IsRowMatrix()) {
+			throw ModelError(METHOD_NAME, "Expected outputs are not a row matrix.");
+		}
+
+		try {
+			_Check();
+		} catch (...) {
+			throw ModelError(METHOD_NAME, "Model checks failed.");
+		}
+
+		ModelStructure unactivatedOutputs = _ModelStructure(), activatedOutputs = _ModelStructure(), gradients = _ModelStructure();
+		_OutputStructures(_inputs, unactivatedOutputs, activatedOutputs);
+
+		_PopulateUnactivatedGradientStructure(gradients, activatedOutputs, unactivatedOutputs, _expectedOutputs);
+
+		for (GMath::size_t l = 0; l < m_layers.Size(); l++) {
+			Layer<value_t> &currentLayer = m_layers[l];
+
+			for (GMath::size_t n = 0; n < currentLayer.Size(); n++) {
+				auto biasSlope = currentLayer.BiasSlope(gradients.GetLayer(l)[n]);
+				currentLayer.SetBias(currentLayer.GetBias(n) - biasSlope * _learningRate, n);
+
+				if (l == 0) {
+					for (GMath::size_t i = 0; i < currentLayer.Inputs(); i++) {
+						auto weightSlope = currentLayer.WeightSlope(gradients.GetLayer(l)[n], _inputs, i);
+						currentLayer.SetWeight(currentLayer.GetWeight(n, i) - weightSlope * _learningRate, n, i);
+					}
+				}
+				else {
+					for (GMath::size_t i = 0; i < currentLayer.Inputs(); i++) {
+						auto weightSlope = currentLayer.WeightSlope(gradients.GetLayer(l)[n], activatedOutputs.GetLayer(l - 1), i);
+						currentLayer.SetWeight(currentLayer.GetWeight(n, i) - weightSlope * _learningRate, n, i);
+					}
+				}
+			}
+		}
+	}
 };
 } // namespace GNeuro
