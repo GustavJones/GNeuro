@@ -13,45 +13,45 @@ template <typename value_t> class Layer {
 public:
 	class LayerError : public std::runtime_error {
 	public:
-		LayerError(const std::string &_methodName, const std::string &_errorString) : std::runtime_error("(GNeuro::Layer): " + _methodName + " - " + _errorString) {}
+		LayerError(const std::string &_errorString) : std::runtime_error("(GNeuro::Layer): " + _errorString) {}
 	};
 
 private:
 	GMath::Matrix<value_t> m_weights;
 	GMath::DynamicArray<value_t> m_biases;
 	typename FunctionType<value_t>::activation_t m_activationFunction;
+
 	/*
 	 * Check if the layer's weights and biases create a valid layer.
 	 * Throws and exception if errors were found.
 	 */
-	void _CheckShape() const {
-		const static std::string METHOD_NAME = "_CheckShape()";
+	void _Check() const {
 
 		GMath::MatrixShape weightsShape = m_weights.Shape();
 		GMath::size_t biasesCount = m_biases.Size();
 
 		if (biasesCount <= 0) {
-			throw LayerError(METHOD_NAME, "Invalid layer. Not enough neurons.");
+			throw LayerError("Invalid layer. Not enough neurons.");
 		}
 
 		if (weightsShape.Rows != biasesCount) {
-			throw LayerError(METHOD_NAME, "Bias count does not match available weight sets.");
+			throw LayerError("Bias count does not match available weight sets.");
 		}
 
 		GMath::size_t inputCount = m_weights[0].Size();
 		if (inputCount <= 0) {
-			throw LayerError(METHOD_NAME, "Layer doesn't support any input.");
+			throw LayerError("Layer doesn't support any input.");
 		}
 
 		if (!m_activationFunction) {
-				throw LayerError(METHOD_NAME, "Layer has an unset activation function.");
+				throw LayerError("Layer has an unset activation function.");
 		}
 
 		for (GMath::size_t i = 1; i < biasesCount; i++) {
 			const GMath::DynamicArray<value_t> &row = m_weights[i];
 
 			if (row.Size() != inputCount) {
-				throw LayerError(METHOD_NAME, "Weight set " + std::to_string(i) + " doesn't match input count of " + std::to_string(inputCount));
+				throw LayerError("Weight set " + std::to_string(i) + " doesn't match input count of " + std::to_string(inputCount));
 			}
 		}
 	}
@@ -60,23 +60,7 @@ private:
 	 * Calculate the unactivated output values of _inputs when run through the layer.
 	 */
 	[[nodiscard]]
-	GMath::Matrix<value_t> _CalculateUnactivated(const GMath::Matrix<value_t> &_inputs) const {
-		const static std::string METHOD_NAME = "CalculateUnactivated()";
-
-		if (!_inputs.IsRowMatrix()) {
-			throw LayerError(METHOD_NAME, "Inputs are not a row matrix.");
-		}
-
-		try {
-			_CheckShape();
-		} catch (...) {
-			throw LayerError(METHOD_NAME, "Layer has an unknown shape.");
-		}
-
-		if (_inputs.Shape().Columns != m_weights[0].Size()) {
-			throw LayerError(METHOD_NAME, "Layer does not support input size. Layer requires " + std::to_string(m_weights[0].Size()) + " inputs.");
-		}
-
+	GMath::Matrix<value_t> _CalculateUnactivated(const GMath::Matrix<value_t> &_inputs) const noexcept {
 		GMath::Matrix<value_t> unactivatedOutputs = (_inputs * m_weights.Transpose()) + m_biases;
 		return unactivatedOutputs;
 		GMath::Matrix<value_t> activatedOutputs { unactivatedOutputs.Shape() };
@@ -91,15 +75,7 @@ private:
 	 * Calculate the activated output values of _inputs when run through the layer.
 	 */
 	[[nodiscard]]
-	GMath::Matrix<value_t> _CalculateActivated(const GMath::Matrix<value_t> &_unactivatedOutputs) const {
-		const static std::string METHOD_NAME = "CalculateActivated()";
-
-		try {
-			_CheckShape();
-		} catch (...) {
-			throw LayerError(METHOD_NAME, "Layer has an unknown shape.");
-		}
-
+	GMath::Matrix<value_t> _CalculateActivated(const GMath::Matrix<value_t> &_unactivatedOutputs) const noexcept {
 		std::string _;
 		GMath::Matrix<value_t> activatedOutputs = GetActivation()(_unactivatedOutputs, false, _);
 		
@@ -117,25 +93,28 @@ public:
 	/*
 	 * Get the amount of neurons in the layer.
 	 */
+	[[nodiscard]]
 	GMath::size_t Size() const {
-		const static std::string METHOD_NAME = "Size()";
 
 		try {
-			_CheckShape();
+			_Check();
 		} catch (...) {
-			throw LayerError(METHOD_NAME, "Layer has an unknown shape.");
+			throw LayerError("Layer has an unknown shape.");
 		}
 
 		return m_biases.Size();
 	}
 
+	/*
+	 * Get the amount of inputs supported by the layer.
+	 */
+	[[nodiscard]]
 	GMath::size_t Inputs() const {
-		const static std::string METHOD_NAME = "Inputs()";
 
 		try {
-			_CheckShape();
+			_Check();
 		} catch (...) {
-			throw LayerError(METHOD_NAME, "Layer has an unknown shape.");
+			throw LayerError("Layer has an unknown shape.");
 		}
 
 		return m_weights[0].Size();
@@ -145,14 +124,13 @@ public:
 	 * Setup layer to a specific size and activation.
 	 */
 	void Set(const GMath::size_t &_neuronCount, const typename GNeuro::FunctionType<value_t>::activation_t _activationFunction) {
-		const static std::string METHOD_NAME = "Set()";
 
-		if (_neuronCount <= 0) {
-			throw LayerError(METHOD_NAME, "Invalid neuron count.");
+		if (_neuronCount < 1) {
+			throw LayerError("Invalid neuron count.");
 		}
 
 		if (!_activationFunction) {
-			throw LayerError(METHOD_NAME, "Invalid activation function.");
+			throw LayerError("Invalid activation function.");
 		}
 
 		m_biases.Resize(_neuronCount);
@@ -166,13 +144,21 @@ public:
 	}
 
 	/*
+	 * Reset the layer to invalid state.
+	 */
+	void Reset() {
+		m_biases.Resize(0);
+		m_weights.Reshape({0, 0});
+		m_activationFunction = nullptr;
+	}
+
+	/*
 	 * Configure layer for an input amount.
 	 */
 	void Fit(const GMath::size_t &_inputCount) {
-		const static std::string METHOD_NAME = "Fit()";
 
-		if (_inputCount <= 0) {
-			throw LayerError(METHOD_NAME, "Invalid input count.");
+		if (_inputCount < 1) {
+			throw LayerError("Invalid input count.");
 		}
 
 		m_weights.Reshape({m_weights.Shape().Rows, _inputCount});
@@ -183,6 +169,13 @@ public:
 	 * Set parameters to random values.
 	 */
 	void Randomize() {
+
+		try {
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
+
 		for (GMath::size_t n = 0; n < Size(); n++) {
 			m_biases[n] = GMath::Random((value_t)-1, (value_t)1);
 
@@ -196,28 +189,68 @@ public:
 	 * Calculate the output value of _inputs when run through the layer.
 	 */
 	[[nodiscard]]
-	GMath::Matrix<value_t> CalculateLayer(const GMath::Matrix<value_t> &_inputs, const bool _activated) const {
-		const static std::string METHOD_NAME = "CalculateLayer()";
+	GMath::Matrix<value_t> CalculateUnactivated(const GMath::Matrix<value_t> &_inputs) const {
 		try {
-			auto unactivated = _CalculateUnactivated(_inputs);
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
 
-			if (_activated) return _CalculateActivated(unactivated);
-			else return unactivated;
-		} catch (LayerError &_layerError) {
-			throw LayerError(METHOD_NAME, "Failed to calculate outputs - " + (std::string)_layerError.what());
-		}	
+		if (!_inputs.IsRowMatrix()) {
+			throw LayerError("Inputs are not a row matrix.");
+		}
+
+		if (_inputs.Shape().Columns != Inputs()) {
+			throw LayerError("Layer does not support input size. Layer requires " + std::to_string(m_weights[0].Size()) + " inputs.");
+		}
+
+		auto unactivated = _CalculateUnactivated(_inputs);
+		return unactivated;
 	}
 
 	/*
 	 * Calculate the activated output value of _inputs when run through the layer.
 	 */
 	[[nodiscard]]
-	GMath::Matrix<value_t> CalculateLayer(const GMath::Matrix<value_t> &_unactivatedOutput) const {
-		const static std::string METHOD_NAME = "CalculateLayer()";
+	GMath::Matrix<value_t> CalculateActivated(const GMath::Matrix<value_t> &_unactivatedOutput) const {
+
 		try {
-			return _CalculateActivated(_unactivatedOutput);
-		} catch (LayerError &_layerError) {
-			throw LayerError(METHOD_NAME, "Failed to calculate outputs - " + (std::string)_layerError.what());
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
+
+		if (!_unactivatedOutput.IsRowMatrix()) {
+			throw LayerError("Unactivated outputs is not a row matrix.");
+		}
+
+		if (_unactivatedOutput.Shape().Columns != Size()) {
+			throw LayerError("Unactivated outputs size does not match layer size.");
+		}
+
+		return _CalculateActivated(_unactivatedOutput);
+	}
+
+	[[nodiscard]]
+	GMath::Matrix<value_t> Calculate(const GMath::Matrix<value_t> &_inputs) const {
+		try {
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
+
+		if (!_inputs.IsRowMatrix()) {
+			throw LayerError("Inputs is not a row matrix.");		
+		}
+
+		if (_inputs.Shape().Columns != Inputs()) {
+			throw LayerError("Inputs amount not supported by layer.");
+		}
+
+		try {
+		  CalculateActivated(CalculateUnactivated(_inputs));
+		} catch (...) {
+			throw LayerError("Failed to calculate layer.");
 		}
 	}
 
@@ -226,16 +259,15 @@ public:
 	 */
 	[[nodiscard]]
 	value_t GetBias(const GMath::size_t &_neuronIndex) const {
-		const static std::string METHOD_NAME = "GetBias()";
 
 		try {
-			_CheckShape();
+			_Check();
 		} catch (...) {
-			throw LayerError(METHOD_NAME, "Layer has an unknown shape.");
+			throw LayerError("Layer has an unknown shape.");
 		}
 
 		if (_neuronIndex < 0 || _neuronIndex >= Size()) {
-			throw LayerError(METHOD_NAME, "Bias index out of bounds.");
+			throw LayerError("Bias index out of bounds.");
 		}
 
 		return m_biases[_neuronIndex];
@@ -245,16 +277,15 @@ public:
 	 * Set the bias of a certain neuron.
 	 */
 	void SetBias(const value_t _value, const GMath::size_t &_neuronIndex) {
-		const static std::string METHOD_NAME = "SetBias()";
 
 		try {
-			_CheckShape();
+			_Check();
 		} catch (...) {
-			throw LayerError(METHOD_NAME, "Layer has an unknown shape.");
+			throw LayerError("Layer has an unknown shape.");
 		}
 
 		if (_neuronIndex < 0 || _neuronIndex >= Size()) {
-			throw LayerError(METHOD_NAME, "Bias index out of bounds.");
+			throw LayerError("Bias index out of bounds.");
 		}
 
 		m_biases[_neuronIndex] = _value;
@@ -265,20 +296,19 @@ public:
 	 */
 	[[nodiscard]]
 	value_t GetWeight(const GMath::size_t &_neuronIndex, const GMath::size_t &_inputIndex) const {
-		const static std::string METHOD_NAME = "GetWeight()";
 
 		try {
-			_CheckShape();
+			_Check();
 		} catch (...) {
-			throw LayerError(METHOD_NAME, "Layer has an unknown shape.");
+			throw LayerError("Layer has an unknown shape.");
 		}
 
 		if (_neuronIndex < 0 || _neuronIndex >= Size()) {
-			throw LayerError(METHOD_NAME, "Weight index out of bounds.");
+			throw LayerError("Weight index out of bounds.");
 		}
 
 		if (_inputIndex < 0 || _inputIndex >= Inputs()) {
-			throw LayerError(METHOD_NAME, "Weight index out of bounds.");
+			throw LayerError("Weight index out of bounds.");
 		}
 
 		return m_weights[_neuronIndex][_inputIndex];
@@ -288,20 +318,19 @@ public:
 	 * Set the weight of a certain neuron and input.
 	 */
 	void SetWeight(const value_t _value, const GMath::size_t &_neuronIndex, const GMath::size_t &_inputIndex) {
-		const static std::string METHOD_NAME = "SetWeight()";
 
 		try {
-			_CheckShape();
+			_Check();
 		} catch (...) {
-			throw LayerError(METHOD_NAME, "Layer has an unknown shape.");
+			throw LayerError("Layer has an unknown shape.");
 		}
 
 		if (_neuronIndex < 0 || _neuronIndex >= Size()) {
-			throw LayerError(METHOD_NAME, "Weight index out of bounds.");
+			throw LayerError("Weight index out of bounds.");
 		}
 
 		if (_inputIndex < 0 || _inputIndex >= Inputs()) {
-			throw LayerError(METHOD_NAME, "Weight index out of bounds.");
+			throw LayerError("Weight index out of bounds.");
 		}
 
 		m_weights[_neuronIndex][_inputIndex] = _value;
@@ -312,12 +341,11 @@ public:
 	 */
 	[[nodiscard]]
 	typename GNeuro::FunctionType<value_t>::activation_t GetActivation() const {
-		const static std::string METHOD_NAME = "GetActivation()";
 
 		try {
-			_CheckShape();
+			_Check();
 		} catch (...) {
-			throw LayerError(METHOD_NAME, "Layer has an unknown shape.");
+			throw LayerError("Layer has an unknown shape.");
 		}
 
 		return m_activationFunction;
@@ -327,8 +355,21 @@ public:
 	 * Get the activation slope contribution to the activated output.
 	 * IE - dOutput/dActivation
 	 */
+	[[nodiscard]]
 	GMath::Matrix<value_t> ActivationSlopes(const GMath::Matrix<value_t> &_unactivatedOutputs) const {
-		const static std::string METHOD_NAME = "ActivationSlope()";
+		try {
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
+
+		if (!_unactivatedOutputs.IsRowMatrix()) {
+			throw LayerError("Unactivated outputs is not a row matrix.");
+		}
+
+		if (_unactivatedOutputs.Shape().Columns != Size()) {
+			throw LayerError("Unactivated outputs size does not match layer size.");
+		}
 
 		try {
 			typename GNeuro::FunctionType<value_t>::activation_t activation = GetActivation();
@@ -338,7 +379,7 @@ public:
 
 			return activatedDerivatives;
 		} catch (LayerError &_layerError) {
-			throw LayerError(METHOD_NAME, "Error getting activation slope - \n" + (std::string)_layerError.what());
+			throw LayerError("Error getting activation slope - \n" + (std::string)_layerError.what());
 		}
 	}
 
@@ -346,58 +387,201 @@ public:
 	 * Get the activation slope contribution to the activated output.
 	 * IE - dOutput/dActivation
 	 */
+	[[nodiscard]]
+	[[deprecated]] // TODO Optimize to only calculate the needed value instead of all of the neuron outputs.
 	value_t ActivationSlope(const GMath::Matrix<value_t> &_unactivatedOutputs, const GMath::size_t &_neuronIndex) const {
-		// const static std::string METHOD_NAME = "ActivationSlope()";
-		//
-		// try {
-		// 	typename GNeuro::FunctionType<value_t>::activation_t activation = GetActivation();
-		//
-		// 	std::string _;
-		// 	GMath::Matrix<value_t> activatedDerivatives = activation(_unactivatedOutputs, true, _);
-		//
-		// 	return activatedDerivatives[0][_neuronIndex];
-		// } catch (LayerError &_layerError) {
-		// 	throw LayerError(METHOD_NAME, "Error getting activation slope - \n" + (std::string)_layerError.what());
-		// }
+		try {
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
 
-		// TODO Optimize to only calculate the needed value instead of all of the neuron outputs.
-		return ActivationSlopes(_unactivatedOutputs)[_neuronIndex];
+		if (!_unactivatedOutputs.IsRowMatrix()) {
+			throw LayerError("Unactivated outputs is not a row matrix.");
+		}
+
+		if (_unactivatedOutputs.Shape().Columns != Size()) {
+			throw LayerError("Unactivated outputs size does not match layer size.");
+		}
+
+		try {
+			return ActivationSlopes(_unactivatedOutputs)[_neuronIndex];
+		} catch (...) {
+			throw LayerError("Failed to calculate activation slopes.");
+		}
+	}
+
+	/*
+	 * Get the bias slope contributions to the activated outputs.
+	 */
+	[[nodiscard]]
+	GMath::Matrix<value_t> BiasSlopes(const GMath::Matrix<value_t> &_unactivatedSlopes) const {
+		try {
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
+
+		if (!_unactivatedSlopes.IsRowMatrix()) {
+			throw LayerError("Unactivated slopes is not a row matrix.");
+		}
+
+		if (_unactivatedSlopes.Shape().Columns != Size()) {
+			throw LayerError("Unactivated slopes size does not match layer size.");
+		}
+
+		return _unactivatedSlopes;
 	}
 
 	/*
 	 * Get the bias slope contribution to the activated output.
 	 * IE - dOutput/dBias
 	 */
+	[[nodiscard]]
 	value_t BiasSlope(const value_t &_unactivatedSlope) const {
+		try {
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
+
 		return _unactivatedSlope;
+	}
+
+
+	/*
+	 * Get the weight slope contributions to the activated outputs.
+	 */
+	[[nodiscard]]
+	GMath::Matrix<value_t> WeightSlopes(const GMath::Matrix<value_t> &_unactivatedSlopes, const GMath::Matrix<value_t> &_layerInputs) const {
+		try {
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
+
+		if (!_unactivatedSlopes.IsRowMatrix()) {
+			throw LayerError("Unactivated slopes is not a row matrix.");
+		}
+
+		if (_unactivatedSlopes.Shape().Columns != Size()) {
+			throw LayerError("Unactivated slopes is not the size of the layer.");
+		}
+
+		if (!_layerInputs.IsRowMatrix()) {
+			throw LayerError("Layer inputs is not a row matrix.");
+		}
+
+		if (_layerInputs.Shape().Columns != Inputs()) {
+			throw LayerError("Layer inputs size does not match input count.");
+		}
+
+		GMath::Matrix<value_t> weightSlopes;
+
+		try {
+			for (GMath::size_t n = 0; n < Size(); n++) {
+				GMath::DynamicArray<value_t> weightBatch;
+
+				for (GMath::size_t w = 0; w < _layerInputs.Shape().Columns; w++) {
+					weightBatch.PushBack(WeightSlope(_unactivatedSlopes[0][n], _layerInputs, w));
+				}
+
+				weightSlopes.AppendRow(weightBatch);
+			}
+		} catch (...) {
+			throw LayerError("Failed to get weight slopes.");
+		}
+
+		return weightSlopes;
 	}
 
 	/*
 	 * Get the weight slope contribution to the activated output.
 	 * IE - dOutput/dWeight
 	 */
+	[[nodiscard]]
 	value_t WeightSlope(const value_t &_unactivatedSlope, const GMath::Matrix<value_t> &_layerInputs, const GMath::size_t &_weightIndex) const {
-		const static std::string METHOD_NAME = "WeightSlope()";
-
 		try {
-			return _unactivatedSlope * _layerInputs[0][_weightIndex];
-		} catch (LayerError &_layerError) {
-			throw LayerError(METHOD_NAME, "Error getting weight slope - \n" + (std::string)_layerError.what());
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
 		}
+
+		if (!_layerInputs.IsRowMatrix()) {
+			throw LayerError("Layer inputs is not a row matrix.");
+		}
+
+		if (_layerInputs.Shape().Columns != Inputs()) {
+			throw LayerError("Layer inputs size does not match input count.");
+		}
+
+		if (_weightIndex < 0 || _weightIndex >= Inputs()) {
+			throw LayerError("Weight index out of bounds.");
+		}
+
+		return _unactivatedSlope * _layerInputs[0][_weightIndex];
 	}
 
 	/*
 	 * Get the input slope contribution to the activated output.
 	 * IE - dOutput/dInput
 	 */
+	[[nodiscard]]
 	value_t InputSlope(const value_t &_unactivatedSlope, const GMath::size_t &_neuronIndex, const GMath::size_t &_inputIndex) const {
-		const static std::string METHOD_NAME = "InputSlope()";
+		try {
+			_Check();
+		} catch (...) {
+			throw LayerError("Layer has an unknown shape.");
+		}
+
+		if (_neuronIndex < 0 || _neuronIndex >= Size()) {
+			throw LayerError("Neuron index out of bounds.");
+		}
+
+		if (_inputIndex < 0 || _inputIndex >= Inputs()) {
+			throw LayerError("Input index out of bounds.");
+		}
 
 		try {
 			return _unactivatedSlope * GetWeight(_neuronIndex, _inputIndex);
 		} catch (LayerError &_layerError) {
-			throw LayerError(METHOD_NAME, "Error getting input slope - \n" + (std::string)_layerError.what());
+			throw LayerError("Error getting input slope.");
 		}
 	}
+
+	/*
+	 * Get the input slope contributions the the activated outputs.
+	 */
+	[[nodiscard]]
+	GMath::Matrix<value_t> InputSlopes(const GMath::Matrix<value_t> &_unactivatedSlopes) const {
+		GMath::Matrix<value_t> inputSlopes;
+
+		if (!_unactivatedSlopes.IsRowMatrix()) {
+			throw LayerError("Unactivated slopes is not a row matrix.");
+		}
+
+		if (_unactivatedSlopes.Shape().Columns != Size()) {
+			throw LayerError("Unactivated slopes is not the size of the layer.");
+		}
+
+		try {
+			for (GMath::size_t n = 0; n < Size(); n++) {
+				GMath::DynamicArray<value_t> inputBatch;
+
+				for (GMath::size_t i = 0; i < Inputs(); i++) {
+					inputBatch.PushBack(InputSlope(_unactivatedSlopes[0][n], n, i));
+				}
+
+				inputSlopes.AppendRow(inputBatch);
+			}
+
+			// return _unactivatedSlope * GetWeight(_neuronIndex, _inputIndex);
+		} catch (LayerError &_layerError) {
+			throw LayerError("Error getting input slope.");
+		}
+
+		return inputSlopes;
+	}
+
 };
 } // namespace GNeuro

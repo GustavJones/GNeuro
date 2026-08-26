@@ -1,6 +1,4 @@
-#include "GNeuro/Network.hpp"
-#include "GNeuro/Activation.hpp"
-#include "GNeuro/Loss.hpp"
+#include "GNeuro/GNeuro.hpp"
 
 // Example data for an XOR network
 // Trains a model to produce the output of an XOR operation
@@ -23,13 +21,12 @@ int main(int argc, char *argv[]) {
 
 	GNeuro::Network<double> network;
 	network.AddLayer(2, GNeuro::LeakyReLu);
-	network.AddLayer(2, GNeuro::LeakyReLu);
 	network.AddLayer(1, GNeuro::Sigmoid);
 	network.CreateModel(GNeuro::SquaredError, 2, true);
 
-	network.Train(inputs, expectedOutputs, 0.1, 0.00001, running);
+	network.Train(inputs, expectedOutputs, 0.1, 0.001, running);
 	// network.Train(inputs, expectedOutputs, 0.05, 10000);
 	std::cout << network.Calculate(inputs) << std::endl;
-  
+
   return 0;
 }
