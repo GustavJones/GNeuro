@@ -20,13 +20,22 @@ int main(int argc, char *argv[]) {
 	std::atomic<bool> running = true;
 
 	GNeuro::Network<double> network;
-	network.AddLayer(2, GNeuro::LeakyReLu);
-	network.AddLayer(1, GNeuro::Sigmoid);
-	network.CreateModel(GNeuro::SquaredError, 2, true);
+	GNeuro::Model<double> model;
+
+	try {
+		model.Load("model.json", {GNeuro::SquaredError}, {GNeuro::Sigmoid, GNeuro::ReLu, GNeuro::LeakyReLu});
+		network.SetModel(model);
+	} catch (...) {
+		network.AddLayer(2, GNeuro::LeakyReLu);
+		network.AddLayer(1, GNeuro::Sigmoid);
+		network.CreateModel(GNeuro::SquaredError, 2, true);
+	}
 
 	network.Train(inputs, expectedOutputs, 0.1, 0.001, running);
 	// network.Train(inputs, expectedOutputs, 0.05, 10000);
 	std::cout << network.Calculate(inputs) << std::endl;
+
+	network.GetModel().Save("model.json");
 
   return 0;
 }

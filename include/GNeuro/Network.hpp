@@ -21,8 +21,16 @@ private:
 	GNeuro::Model<value_t> m_model;
 
 public:
+	/*
+	 * Get model used in network.
+	 */
 	[[nodiscard]]
-	GNeuro::Model<value_t> Model() const { return m_model; }
+	GNeuro::Model<value_t> GetModel() const { return m_model; }
+
+	/*
+	 * Set the model used in network.
+	 */
+	void SetModel(const GNeuro::Model<value_t> &_model) { m_model = _model; }
 
 	/*
 	 * Create a new model for the network.

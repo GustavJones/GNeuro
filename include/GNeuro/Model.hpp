@@ -1,6 +1,7 @@
 #pragma once
 #include "FunctionType.hpp"
 #include "Layer.hpp"
+#include "GParsing/JSON/GParsing-JSON.hpp"
 
 namespace GNeuro {
 template <typename value_t> class Model {
@@ -203,6 +204,76 @@ private:
 			_structure[l] = gradients[0];
 		}
 	}
+
+
+	void _LoadV1(const GParsing::JSONObject<unsigned char> &_json, const GMath::DynamicArray<typename FunctionType<value_t>::loss_t> &_availableLossFunctions, const GMath::DynamicArray<typename FunctionType<value_t>::activation_t> &_availableActivationFunctions) {
+    const auto lossString = _json["loss"].GetString();
+    bool found = false;
+    for (size_t l = 0; l < _availableLossFunctions.Size(); l++) {
+      std::string funcName;
+      _availableLossFunctions[l]({0}, {0}, false, funcName);
+
+      if (lossString == funcName) {
+				SetLossFunction(_availableLossFunctions[l]);
+        found = true;
+      }
+    }
+
+    if (!found) {
+      throw ModelError("Cannot parse loss function string.");
+    }
+
+    const auto &weights = _json["weights"].GetArray();
+    const auto &biases = _json["biases"].GetArray();
+    const auto &activations = _json["activations"].GetArray();
+
+		// Check layer count
+    if (weights.GetSize() != biases.GetSize() || weights.GetSize() != activations.GetSize()) {
+      throw ModelError("Corrupted model.");
+    }
+
+		m_layers.Resize(weights.GetSize());
+    for (size_t l = 0; l < weights.GetSize(); l++) {
+      auto &jsonWeightsLayer = weights[l].GetArray();
+      auto &jsonBiasesLayer = biases[l].GetArray();
+      auto activation = activations[l].GetString();
+
+      if (jsonWeightsLayer.GetSize() < 1) {
+        continue;
+      }
+
+			bool found = false;
+			for (size_t a = 0; a < _availableActivationFunctions.Size(); a++) {
+				std::string funcName;
+				_availableActivationFunctions[a](0, false, funcName);
+
+				if (activation == funcName) {
+					m_layers[l].SetActivation(_availableActivationFunctions[a]);
+					found = true;
+				}
+			}
+
+			if (!found) {
+				throw ModelError("No activation function found in provided list.");
+			}
+
+			m_layers[l].Resize(jsonWeightsLayer.GetSize());
+			m_layers[l].Fit(jsonWeightsLayer[0].GetArray().GetSize());
+
+      for (size_t n = 0; n < jsonWeightsLayer.GetSize(); n++) {
+        auto &jsonWeight = jsonWeightsLayer[n].GetArray();
+        auto bias = jsonBiasesLayer[n].GetNumber();
+
+				m_layers[l].SetBias(bias, n);
+
+        for (size_t w = 0; w < m_layers[l].Inputs(); w++) {
+          value_t weight = jsonWeight.GetValue(w).GetNumber();
+					m_layers[l].SetWeight(weight, n, w);
+        }
+
+      }
+    }
+  }
 
 public:
 	/*
@@ -460,5 +531,100 @@ public:
 			}
 		}
 	}
+
+	void Save(const std::string &_filepath) {
+		try {
+			_Check();
+		} catch (...) {
+			throw ModelError("Model checks failed.");
+		}
+
+		if (_filepath.empty()) {
+			throw ModelError("No filepath given.");
+		}
+
+		using serialize_t = unsigned char;
+    const std::string MODEL_SAVE_VERSION = "v1";
+    GParsing::JSONObject<serialize_t> json;
+
+    // Metadata
+    GParsing::JSONObject<serialize_t> metadata;
+    metadata.AddMember("version", (GParsing::JSONString<serialize_t>)MODEL_SAVE_VERSION);
+    metadata.AddMember("type", (GParsing::JSONString<serialize_t>)"GNeuro::Model");
+    json.AddMember("metadata", metadata);
+
+		std::string lossFunctionName;
+		m_lossFunction({0}, {0}, false, lossFunctionName);
+
+		json.AddMember("loss", (GParsing::JSONString<serialize_t>)lossFunctionName);
+
+
+		// Weights
+		GParsing::JSONArray<serialize_t> weights;
+		for (GMath::size_t l = 0; l < m_layers.Size(); l++) {
+			GParsing::JSONArray<serialize_t> layer;
+
+			for (GMath::size_t n = 0; n < m_layers[l].Size(); n++) {
+				GParsing::JSONArray<serialize_t> neuron;
+
+				for (GMath::size_t w = 0; w < m_layers[l].Inputs(); w++) {
+					neuron.PushValue((GParsing::JSONNumber<serialize_t>)m_layers[l].GetWeight(n, w));
+				}  
+
+				layer.PushValue(neuron);
+			}
+
+			weights.PushValue(layer);
+		}
+		json.AddMember("weights", weights);
+
+		// Biases
+		GParsing::JSONArray<serialize_t> biases;
+		for (size_t l = 0; l < m_layers.Size(); l++) {
+			GParsing::JSONArray<serialize_t> layer;
+
+			for (size_t n = 0; n < m_layers[l].Size(); n++) {
+				layer.PushValue((GParsing::JSONNumber<serialize_t>)m_layers[l].GetBias(n));
+			}
+
+			biases.PushValue(layer);
+		}
+		json.AddMember("biases", biases);
+
+		// Activation Functions
+		GParsing::JSONArray<serialize_t> activations;
+		for (size_t l = 0; l < m_layers.Size(); l++) {
+			std::string activationFunctionName;
+			m_layers[l].GetActivation()({0}, false, activationFunctionName);
+			activations.PushValue((GParsing::JSONString<serialize_t>)activationFunctionName);
+		}
+		json.AddMember("activations", activations);
+   
+    if (!json.Serialize(_filepath)) {
+      throw ModelError("Error serializing model to JSON.");
+    }
+  }
+
+	void Load(const std::string &_filepath, const GMath::DynamicArray<typename FunctionType<value_t>::loss_t> &_availableLossFunctions, const GMath::DynamicArray<typename FunctionType<value_t>::activation_t> &_availableActivationFunctions) {
+    GParsing::JSONObject<unsigned char> json;
+    if (!json.Parse(_filepath)) {
+      throw std::runtime_error("Error parsing model from JSON.");
+    }
+
+    const auto &metadataObject = json["metadata"].GetObject();
+    const auto &versionString = metadataObject["version"].GetString();
+    const auto &typeString = metadataObject["type"].GetString();
+
+    if (typeString != "GNeuro::Model") {
+      throw std::runtime_error("Unknown JSON type.");
+    }
+
+    if (versionString == "v1") {
+      _LoadV1(json, _availableLossFunctions, _availableActivationFunctions);
+    }
+    else {
+      throw std::runtime_error("Unknown model version");
+    }
+  }
 };
 } // namespace GNeuro

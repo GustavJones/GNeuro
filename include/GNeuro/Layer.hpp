@@ -106,6 +106,23 @@ public:
 	}
 
 	/*
+	 * Resize the layer.
+	 */
+	void Resize(const GMath::size_t &_neuronCount) {
+		if (_neuronCount < 1) {
+			throw LayerError("Invalid neuron count.");
+		}
+
+		m_biases.Resize(_neuronCount);
+		m_weights.Reshape({m_biases.Size(), m_weights.Shape().Columns});
+
+		m_weights.Zero();
+		for (GMath::size_t i = 0; i < m_biases.Size(); i++) {
+			m_biases[i] = 0;
+		}
+	}
+
+	/*
 	 * Get the amount of inputs supported by the layer.
 	 */
 	[[nodiscard]]
@@ -133,14 +150,8 @@ public:
 			throw LayerError("Invalid activation function.");
 		}
 
-		m_biases.Resize(_neuronCount);
-		m_weights.Reshape({m_biases.Size(), m_weights.Shape().Columns});
-
-		m_weights.Zero();
-		m_activationFunction = _activationFunction;
-		for (GMath::size_t i = 0; i < m_biases.Size(); i++) {
-			m_biases[i] = 0;
-		}
+		Resize(_neuronCount);
+		SetActivation(_activationFunction);
 	}
 
 	/*
@@ -349,6 +360,14 @@ public:
 		}
 
 		return m_activationFunction;
+	}
+
+	void SetActivation(const typename GNeuro::FunctionType<value_t>::activation_t _activationFunction) {
+		if (!_activationFunction) {
+			throw LayerError("No activation function given.");
+		}
+
+		m_activationFunction = _activationFunction;
 	}
 
 	/*
