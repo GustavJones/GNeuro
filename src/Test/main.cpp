@@ -23,12 +23,15 @@ int main(int argc, char *argv[]) {
 	GNeuro::Model<double> model;
 
 	try {
-		model.Load("model.json", {GNeuro::SquaredError}, {GNeuro::Sigmoid, GNeuro::ReLu, GNeuro::LeakyReLu});
+		model.Load("model.json", GNeuro::FunctionType<double>::GetLossFunctions(), GNeuro::FunctionType<double>::GetActivationFunctions());
 		network.SetModel(model);
 	} catch (...) {
-		network.AddLayer(2, GNeuro::LeakyReLu);
-		network.AddLayer(1, GNeuro::Sigmoid);
-		network.CreateModel(GNeuro::SquaredError, 2, true);
+		model.AddLayer(2, GNeuro::LeakyReLu);
+		model.AddLayer(1, GNeuro::Sigmoid);
+		model.SetLossFunction(GNeuro::SquaredError);
+		model.Fit(2);
+		model.Randomize();
+		network.SetModel(model);
 	}
 
 	network.Train(inputs, expectedOutputs, 0.1, 0.001, running);

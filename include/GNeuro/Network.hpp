@@ -35,6 +35,7 @@ public:
 	/*
 	 * Create a new model for the network.
 	 */
+	[[deprecated("Use SetModel() instead.")]]
 	void CreateModel(const typename GNeuro::FunctionType<value_t>::loss_t _lossFunction, const GMath::size_t &_inputCount, const bool _randomize) {
 		if (!_lossFunction) {
 			throw NetworkError("No loss function provided.");
@@ -52,7 +53,7 @@ public:
 	/*
 	 * Reset model to invalid state.
 	 */
-	void ResetModel() {
+	void ClearModel() {
 		m_model.Reset();
 	}
 
@@ -86,6 +87,7 @@ public:
 	/*
 	 * Add a new layer to the model.
 	 */
+	[[deprecated("Edit GetModel() and readd with SetModel()")]]
 	void AddLayer(const GMath::size_t &_neuronCount, const typename GNeuro::FunctionType<value_t>::activation_t _activationFunction) {
 		if (_neuronCount < 1) {
 			throw NetworkError("Invalid neuron count given.");
@@ -101,6 +103,7 @@ public:
 	/*
 	 * Remove a layer from the model.
 	 */
+	[[deprecated("Edit GetModel() and readd with SetModel()")]]
 	void RemoveLayer(const GMath::size_t _index) {
 		if (_index < 1 || _index >= m_model.Layers()) {
 			throw NetworkError("Index out of bounds.");	
