@@ -277,6 +277,165 @@ private:
 
 public:
 	/*
+	 * Add the weights and biases of another model.
+	 */
+	Model operator+(const Model &_addModel) const {
+		try {
+			_Check();
+		} catch (ModelError &_modelError) {
+			throw ModelError("Model checks failed - \n" + (std::string)_modelError.what());
+		}
+
+		if (m_lossFunction != _addModel.m_lossFunction) {
+			throw ModelError("Models use different loss functions");
+		}
+
+		if (Inputs() != _addModel.Inputs()) {
+			throw ModelError("Model input counts not the same.");
+		}
+
+		auto selfDimentions = Dimentions(), otherDimentions = _addModel.Dimentions();
+		if (selfDimentions.Size() != otherDimentions.Size()) {
+			throw ModelError("Model dimentions do not match.");
+		}
+
+		for (GMath::size_t l = 0; l < selfDimentions.Size(); l++) {
+			if (selfDimentions[l] != otherDimentions[l]) {
+				throw ModelError("Model dimentions do not match.");
+			}
+		}
+
+		for (GMath::size_t l = 0; l < selfDimentions.Size(); l++) {
+			if (m_layers[l].GetActivation() != _addModel.m_layers[l].GetActivation()) {
+				throw ModelError("Models use different activation functions.");
+			}
+		}
+
+		Model output = *this;
+
+		for (GMath::size_t l = 0; l < selfDimentions.Size(); l++) {
+			for (GMath::size_t n = 0; n < selfDimentions[l]; n++) {
+				auto oldBias = output.m_layers[l].GetBias(n);
+				output.m_layers[l].SetBias(oldBias + _addModel.m_layers[l].GetBias(n), n);
+
+				for (GMath::size_t w = 0; w < m_layers[l].Inputs(); w++) {
+					auto oldWeight = output.m_layers[l].GetWeight(n, w);
+					output.m_layers[l].SetWeight(oldWeight + _addModel.m_layers[l].GetWeight(n, w), n, w);
+				}
+			}
+		}
+
+		return output;
+	}
+
+	/*
+	 * Subtract the weights and biases of another model.
+	 */
+	Model operator-(const Model &_subtractModel) const {
+		try {
+			_Check();
+		} catch (ModelError &_modelError) {
+			throw ModelError("Model checks failed - \n" + (std::string)_modelError.what());
+		}
+
+		if (m_lossFunction != _subtractModel.m_lossFunction) {
+			throw ModelError("Models use different loss functions");
+		}
+
+		if (Inputs() != _subtractModel.Inputs()) {
+			throw ModelError("Model input counts not the same.");
+		}
+
+		auto selfDimentions = Dimentions(), otherDimentions = _subtractModel.Dimentions();
+		if (selfDimentions.Size() != otherDimentions.Size()) {
+			throw ModelError("Model dimentions do not match.");
+		}
+
+		for (GMath::size_t l = 0; l < selfDimentions.Size(); l++) {
+			if (selfDimentions[l] != otherDimentions[l]) {
+				throw ModelError("Model dimentions do not match.");
+			}
+		}
+
+		for (GMath::size_t l = 0; l < selfDimentions.Size(); l++) {
+			if (m_layers[l].GetActivation() != _subtractModel.m_layers[l].GetActivation()) {
+				throw ModelError("Models use different activation functions.");
+			}
+		}
+
+		Model output = *this;
+
+		for (GMath::size_t l = 0; l < selfDimentions.Size(); l++) {
+			for (GMath::size_t n = 0; n < selfDimentions[l]; n++) {
+				auto oldBias = output.m_layers[l].GetBias(n);
+				output.m_layers[l].SetBias(oldBias - _subtractModel.m_layers[l].GetBias(n), n);
+
+				for (GMath::size_t w = 0; w < m_layers[l].Inputs(); w++) {
+					auto oldWeight = output.m_layers[l].GetWeight(n, w);
+					output.m_layers[l].SetWeight(oldWeight - _subtractModel.m_layers[l].GetWeight(n, w), n, w);
+				}
+			}
+		}
+
+		return output;
+	}
+
+
+	/*
+	 * Multiply the weights and biases with a factor.
+	 */
+	Model operator*(const value_t &_factor) const {
+		try {
+			_Check();
+		} catch (ModelError &_modelError) {
+			throw ModelError("Model checks failed - \n" + (std::string)_modelError.what());
+		}
+
+		Model output = *this;
+
+		for (GMath::size_t l = 0; l < Layers(); l++) {
+			for (GMath::size_t n = 0; n < m_layers[l].Size(); n++) {
+				auto oldBias = output.m_layers[l].GetBias(n);
+				output.m_layers[l].SetBias(oldBias * _factor, n);
+
+				for (GMath::size_t w = 0; w < m_layers[l].Inputs(); w++) {
+					auto oldWeight = output.m_layers[l].GetWeight(n, w);
+					output.m_layers[l].SetWeight(oldWeight * _factor, n, w);
+				}
+			}
+		}
+
+		return output;
+	}
+
+	/*
+	 * Divide the weights and biases with a factor.
+	 */
+	Model operator/(const value_t &_factor) const {
+		try {
+			_Check();
+		} catch (ModelError &_modelError) {
+			throw ModelError("Model checks failed - \n" + (std::string)_modelError.what());
+		}
+
+		Model output = *this;
+
+		for (GMath::size_t l = 0; l < Layers(); l++) {
+			for (GMath::size_t n = 0; n < m_layers[l].Size(); n++) {
+				auto oldBias = output.m_layers[l].GetBias(n);
+				output.m_layers[l].SetBias(oldBias / _factor, n);
+
+				for (GMath::size_t w = 0; w < m_layers[l].Inputs(); w++) {
+					auto oldWeight = output.m_layers[l].GetWeight(n, w);
+					output.m_layers[l].SetWeight(oldWeight / _factor, n, w);
+				}
+			}
+		}
+
+		return output;
+	}
+
+	/*
 	 * Set the loss function to use for model.
 	 */
 	void SetLossFunction(const typename GNeuro::FunctionType<value_t>::loss_t _lossFunction) {
@@ -396,6 +555,25 @@ public:
 		}
 
 		return m_layers[Layers() - 1].Size();
+	}
+
+	/*
+	 * Get the dimentions of the model.
+	 */
+	GMath::DynamicArray<GMath::size_t> Dimentions() const {
+		try {
+			_Check();
+		} catch (ModelError &_modelError) {
+			throw ModelError("Model checks failed - \n" + (std::string)_modelError.what());
+		}
+
+		GMath::DynamicArray<GMath::size_t> output;
+
+		for (GMath::size_t l = 0; l < Layers(); l++) {
+			output.PushBack(m_layers[l].Size());
+		}
+
+		return output;
 	}
 
 	/*
