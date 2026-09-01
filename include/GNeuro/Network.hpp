@@ -1,7 +1,9 @@
 #pragma once
 #include "GNeuro/Model.hpp"
+#include <future>
 #include <stdexcept>
-#include <atomic>
+#include <thread>
+#include <utility>
 
 namespace GNeuro {
 
@@ -19,6 +21,34 @@ public:
 
 private:
 	GNeuro::Model<value_t> m_model;
+
+	/*
+	 * Train a batch.
+	 */
+	void _TrainBatch(const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches, const value_t &_learningRate) {
+		const GMath::size_t BATCH_COUNT = _inputBatches.Shape().Rows;
+		const GMath::size_t THREAD_COUNT = std::thread::hardware_concurrency();
+		
+		GMath::DynamicArray<typename Model<value_t>::ModelGradients> gradients;
+		GMath::DynamicArray<std::future<typename Model<value_t>::ModelGradients>> threads(THREAD_COUNT);
+
+		const auto threadFunc = [](const GNeuro::Model<value_t> &_model, const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches) {
+			return _model.BackPropagate(_inputBatches, _expectedOutputBatches);
+		};
+
+		for (GMath::size_t i = 0; i < BATCH_COUNT; i += THREAD_COUNT) {
+			for (GMath::size_t j = 0; j < THREAD_COUNT && i + j < BATCH_COUNT; j++) {
+				threads[j] = std::async(std::launch::async, threadFunc, m_model, _inputBatches[i + j], _expectedOutputBatches[i + j]);
+			}
+
+			for (GMath::size_t j = 0; j < THREAD_COUNT && i + j < BATCH_COUNT; j++) {
+				std::future<typename Model<value_t>::ModelGradients> &thread = threads[j];
+				gradients.EmplaceBack(std::move(thread.get()));
+			}
+
+			m_model.Optimize(gradients, _learningRate);
+		}
+	}
 
 public:
 	/*
@@ -158,10 +188,9 @@ public:
 			throw NetworkError("Learning rate has to be > 0.");
 		}
 
+
 		for (GMath::size_t i = 0; i < _epochCount; i++) {
-			for (GMath::size_t j = 0; j < _inputBatches.Shape().Rows; j++) {
-				m_model.BackPropagate(_inputBatches[j], _expectedOutputBatches[j], _learningRate);
-			}
+			_TrainBatch(_inputBatches, _expectedOutputBatches, _learningRate);
 
 			std::cout << "Epoch: " << i << std::endl;
 			std::cout << "\x1b[1F";
@@ -197,9 +226,7 @@ public:
 		value_t loss = 0;
 
 		do {
-			for (GMath::size_t j = 0; j < _inputBatches.Shape().Rows; j++) {
-				m_model.BackPropagate(_inputBatches[j], _expectedOutputBatches[j], _learningRate);
-			}
+			_TrainBatch(_inputBatches, _expectedOutputBatches, _learningRate);
 
 			loss = BatchMeanLoss(_inputBatches, _expectedOutputBatches);
 

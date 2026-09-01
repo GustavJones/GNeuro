@@ -34,8 +34,8 @@ int main(int argc, char *argv[]) {
 		network.SetModel(model);
 	}
 
-	network.Train(inputs, expectedOutputs, 0.1, 0.001, running);
-	// network.Train(inputs, expectedOutputs, 0.05, 10000);
+	network.Train(inputs, expectedOutputs, 0.05, 0.001, running);
+	network.Train(inputs, expectedOutputs, 0.05, 1000);
 	std::cout << network.Calculate(inputs) << std::endl;
 
 	network.GetModel().Save("model.json");
