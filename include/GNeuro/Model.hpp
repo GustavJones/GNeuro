@@ -49,10 +49,9 @@ public:
 		[[nodiscard]]
 		[[deprecated("Use operator[].Size() instead.")]]
 		GMath::size_t Neurons(const GMath::size_t &_layerIndex) const {
-
-			if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
-				throw ModelError("Layer index out of bounds.");
-			}
+			// if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
+			// 	throw ModelError("Layer index out of bounds.");
+			// }
 
 			return m_structure[_layerIndex].Size();
 		}
@@ -62,9 +61,9 @@ public:
 		 */
 		[[deprecated("Use operator[] instead.")]]
 		void SetLayer(const GMath::DynamicArray<value_t> &_layer, const GMath::size_t &_layerIndex) {
-			if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
-				throw ModelError("Layer index out of bounds.");
-			}
+			// if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
+			// 	throw ModelError("Layer index out of bounds.");
+			// }
 
 			m_structure[_layerIndex] = _layer;
 		}
@@ -75,9 +74,9 @@ public:
 		[[nodiscard]]
 		[[deprecated("Use operator[] instead.")]]
 		const GMath::DynamicArray<value_t> &GetLayer(const GMath::size_t &_layerIndex) const {
-			if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
-				throw ModelError("Layer index out of bounds.");
-			}
+			// if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
+			// 	throw ModelError("Layer index out of bounds.");
+			// }
 
 			return m_structure[_layerIndex];
 		}
@@ -87,9 +86,9 @@ public:
 		 */
 		[[nodiscard]]
 		GMath::DynamicArray<value_t> &operator[](const GMath::size_t &_layerIndex) {
-			if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
-				throw ModelError("Layer index out of bounds.");
-			}
+			// if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
+			// 	throw ModelError("Layer index out of bounds.");
+			// }
 
 			return m_structure[_layerIndex];
 		}
@@ -100,9 +99,9 @@ public:
 		 */
 		[[nodiscard]]
 		const GMath::DynamicArray<value_t> &operator[](const GMath::size_t &_layerIndex) const {
-			if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
-				throw ModelError("Layer index out of bounds.");
-			}
+			// if (_layerIndex < 0 || _layerIndex >= GetLayerCount()) {
+			// 	throw ModelError("Layer index out of bounds.");
+			// }
 
 			return m_structure[_layerIndex];
 		}
@@ -132,9 +131,9 @@ public:
 		 * Access a layer from gradients.
 		 */
 		GMath::DynamicArray<GMath::DynamicArray<value_t>> &operator[](const GMath::size_t &_index) {
-			if (_index < 0 || _index >= m_gradients.Size()) {
-				throw ModelError("Index out of bounds.");
-			}
+			// if (_index < 0 || _index >= m_gradients.Size()) {
+			// 	throw ModelError("Index out of bounds.");
+			// }
 
 			return m_gradients[_index];
 		}
@@ -143,9 +142,9 @@ public:
 		 * Access a layer from gradients.
 		 */
 		const GMath::DynamicArray<GMath::DynamicArray<value_t>> &operator[](const GMath::size_t &_index) const {
-			if (_index < 0 || _index >= m_gradients.Size()) {
-				throw ModelError("Index out of bounds.");
-			}
+			// if (_index < 0 || _index >= m_gradients.Size()) {
+			// 	throw ModelError("Index out of bounds.");
+			// }
 
 			return m_gradients[_index];
 		}
@@ -188,9 +187,9 @@ public:
 		 */
 		[[nodiscard]]
 		ModelWeightGradients operator+(const ModelWeightGradients &_add) const {
-			if (!HasSameDimentions(_add)) {
-				throw ModelError("Add gradients does not have the correct dimentions.");
-			}
+			// if (!HasSameDimentions(_add)) {
+			// 	throw ModelError("Add gradients does not have the correct dimentions.");
+			// }
 
 			ModelWeightGradients output = *this;
 
@@ -244,9 +243,9 @@ public:
 		 * Access a layer from gradients.
 		 */
 		GMath::DynamicArray<value_t> &operator[](const GMath::size_t &_index) {
-			if (_index < 0 || _index >= m_gradients.Size()) {
-				throw ModelError("Index out of bounds.");
-			}
+			// if (_index < 0 || _index >= m_gradients.Size()) {
+			// 	throw ModelError("Index out of bounds.");
+			// }
 
 			return m_gradients[_index];
 		}
@@ -255,9 +254,9 @@ public:
 		 * Access a layer from gradients.
 		 */
 		const GMath::DynamicArray<value_t> &operator[](const GMath::size_t &_index) const {
-			if (_index < 0 || _index >= m_gradients.Size()) {
-				throw ModelError("Index out of bounds.");
-			}
+			// if (_index < 0 || _index >= m_gradients.Size()) {
+			// 	throw ModelError("Index out of bounds.");
+			// }
 
 			return m_gradients[_index];
 		}
@@ -293,9 +292,9 @@ public:
 		 */
 		[[nodiscard]]
 		ModelBiasGradients operator+(const ModelBiasGradients &_add) const {
-			if (!HasSameDimentions(_add)) {
-				throw ModelError("Add gradients does not have the correct dimentions.");
-			}
+			// if (!HasSameDimentions(_add)) {
+			// 	throw ModelError("Add gradients does not have the correct dimentions.");
+			// }
 
 			ModelBiasGradients output = *this;
 
@@ -334,17 +333,17 @@ public:
 		 * Returns the average of all of the gradients.
 		 */
 		static ModelGradients Average(const GMath::DynamicArray<ModelGradients> &_gradients) {
-			if (_gradients.Size() < 1) {
-				throw ModelError("No gradients given.");
-			}
-
-			for (GMath::size_t g = 0; g < _gradients.Size(); g++) {
-				const ModelGradients &currentGradients = _gradients[g];
-
-				if (!currentGradients.StructuresMatch()) {
-					throw ModelError("Internal structure dimentions don't match.");
-				}
-			}
+			// if (_gradients.Size() < 1) {
+			// 	throw ModelError("No gradients given.");
+			// }
+			//
+			// for (GMath::size_t g = 0; g < _gradients.Size(); g++) {
+			// 	const ModelGradients &currentGradients = _gradients[g];
+			//
+			// 	if (!currentGradients.StructuresMatch()) {
+			// 		throw ModelError("Internal structure dimentions don't match.");
+			// 	}
+			// }
 
 			ModelGradients output = _gradients[0];
 
@@ -388,9 +387,9 @@ public:
 		 */
 		[[nodiscard]]
 		GMath::size_t Layers() const {
-			if (!StructuresMatch()) {
-				throw ModelError("Internal structure dimentions don't match.");
-			}
+			// if (!StructuresMatch()) {
+			// 	throw ModelError("Internal structure dimentions don't match.");
+			// }
 
 			return weights.Size();
 		}
@@ -400,13 +399,13 @@ public:
 		 */
 		[[nodiscard]]
 		GMath::size_t Neurons(const GMath::size_t _layerIndex) const {
-			if (!StructuresMatch()) {
-				throw ModelError("Internal structure dimentions don't match.");
-			}
-
-			if (_layerIndex < 0 || _layerIndex >= Layers()) {
-				throw ModelError("Layer index out of bounds.");
-			}
+			// if (!StructuresMatch()) {
+			// 	throw ModelError("Internal structure dimentions don't match.");
+			// }
+			//
+			// if (_layerIndex < 0 || _layerIndex >= Layers()) {
+			// 	throw ModelError("Layer index out of bounds.");
+			// }
 
 			return weights[_layerIndex].Size();
 		}
@@ -416,17 +415,17 @@ public:
 		 */
 		[[nodiscard]]
 		GMath::size_t Weights(const GMath::size_t _layerIndex, const GMath::size_t _neuronIndex) const {
-			if (!StructuresMatch()) {
-				throw ModelError("Internal structure dimentions don't match.");
-			}
-
-			if (_layerIndex < 0 || _layerIndex >= Layers()) {
-				throw ModelError("Layer index out of bounds.");
-			}
-
-			if (_neuronIndex < 0 || _neuronIndex >= Neurons(_layerIndex)) {
-				throw ModelError("Neuron index out of bounds.");
-			}
+			// if (!StructuresMatch()) {
+			// 	throw ModelError("Internal structure dimentions don't match.");
+			// }
+			//
+			// if (_layerIndex < 0 || _layerIndex >= Layers()) {
+			// 	throw ModelError("Layer index out of bounds.");
+			// }
+			//
+			// if (_neuronIndex < 0 || _neuronIndex >= Neurons(_layerIndex)) {
+			// 	throw ModelError("Neuron index out of bounds.");
+			// }
 
 			return weights[_layerIndex][_neuronIndex].Size();
 		}
@@ -437,12 +436,8 @@ public:
 		[[nodiscard]]
 		ModelGradients operator+(const ModelGradients &_add) const {
 			ModelGradients output;
-			try {
-				output.weights = weights + _add.weights;
-				output.biases = biases + _add.biases;
-			} catch (...) {
-				throw ModelError("Failed to add gradients.");
-			}
+			output.weights = weights + _add.weights;
+			output.biases = biases + _add.biases;
 
 			return output;
 		}
