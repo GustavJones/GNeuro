@@ -54,15 +54,14 @@ inline GMath::Matrix<value_t> Sigmoid(const GMath::Matrix<value_t> &_in, bool _d
 	GMath::Matrix<value_t> output(_in.Shape());
 
   std::string _;
-	GMath::Matrix<value_t> s;
 	if (_derived) {
-		s = Sigmoid(_in, false, _);
+		for (GMath::size_t i = 0; i < output.Shape().Columns; i++) {
+			auto s = 1 / (1 + std::exp(-_in[0][i]));
+			output[0][i] =  s * (1 - s);
+		}
 	}
-
-	for (GMath::size_t i = 0; i < output.Shape().Columns; i++) {
-		if (_derived) {
-			output[0][i] = s[0][i] * (1 - s[0][i]);
-		} else {
+	else {
+		for (GMath::size_t i = 0; i < output.Shape().Columns; i++) {
 			output[0][i] = 1 / (1 + std::exp(-_in[0][i]));
 		}
 	}

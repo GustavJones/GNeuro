@@ -10,10 +10,10 @@ static const GMath::Matrix<double> inputs = {
 };
 
 static const GMath::Matrix<double> expectedOutputs = {
-  {0},
-  {1},
-  {1},
-  {0},
+  {1, 0},
+  {0, 1},
+  {0, 1},
+  {1, 0},
 };
 
 int main(int argc, char *argv[]) {
@@ -26,16 +26,19 @@ int main(int argc, char *argv[]) {
 		model.Load("model.json", GNeuro::FunctionType<double>::GetLossFunctions(), GNeuro::FunctionType<double>::GetActivationFunctions());
 		network.SetModel(model);
 	} catch (...) {
-		model.AddLayer(2, GNeuro::LeakyReLu);
-		model.AddLayer(1, GNeuro::Sigmoid);
+		for (GMath::size_t i = 0; i < 3; i++) {
+			model.AddLayer(5, GNeuro::Sigmoid);
+		}
+
+		model.AddLayer(2, GNeuro::Softmax);
 		model.SetLossFunction(GNeuro::SquaredError);
 		model.Fit(2);
 		model.Randomize();
 		network.SetModel(model);
 	}
 
-	network.Train(inputs, expectedOutputs, 0.05, 0.001, running);
-	network.Train(inputs, expectedOutputs, 0.05, 1000);
+	network.Train(inputs, expectedOutputs, 0.1, 0.001, running, false);
+	network.Train(inputs, expectedOutputs, 0.1, 10000);
 	std::cout << network.Calculate(inputs) << std::endl;
 
 	network.GetModel().Save("model.json");

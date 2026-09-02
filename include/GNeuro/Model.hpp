@@ -2,6 +2,7 @@
 #include "FunctionType.hpp"
 #include "Layer.hpp"
 #include "GParsing/JSON/GParsing-JSON.hpp"
+#include <future>
 
 namespace GNeuro {
 template <typename value_t> class Model {
@@ -20,7 +21,6 @@ public:
 		 * Set the dimentions of the structure.
 		 */
 		void Setup(const GMath::DynamicArray<Layer<value_t>> &_layers) {
-			// m_structure.Resize(_layers.Size());
 			SetLayerCount(_layers.Size());
 
 			for (GMath::size_t l = 0; l < m_structure.Size(); l++) {
@@ -128,6 +128,30 @@ public:
 		}
 
 		/*
+		 * Check if structure is set up.
+		 */
+		[[nodiscard]]
+		bool IsSetup(const GMath::DynamicArray<Layer<value_t>> &_layers) const {
+			if (m_gradients.Size() != _layers.Size()) {
+				return false;
+			}
+
+			for (GMath::size_t l = 0; l < m_gradients.Size(); l++) {
+				if (m_gradients[l].Size() != _layers[l].Size()) {
+					return false;
+				}
+
+				for (GMath::size_t n = 0; n < m_gradients[l].Size(); n++) {
+					if (m_gradients[l][n].Size() != _layers[l].Inputs()) {
+						return false;
+					}
+				}
+			}
+
+			return true;
+		}
+
+		/*
 		 * Access a layer from gradients.
 		 */
 		GMath::DynamicArray<GMath::DynamicArray<value_t>> &operator[](const GMath::size_t &_index) {
@@ -204,6 +228,25 @@ public:
 			return output;
 		}
 
+		/*
+		 * In place add weight gradients.
+		 */
+		ModelWeightGradients &operator+=(const ModelWeightGradients &_add) {
+			// if (!HasSameDimentions(_add)) {
+			// 	throw ModelError("Add gradients does not have the correct dimentions.");
+			// }
+
+			for (GMath::size_t l = 0; l < Size(); l++) {
+				for (GMath::size_t n = 0; n < operator[](l).Size(); n++) {
+					for (GMath::size_t w = 0; w < operator[](l)[n].Size(); w++) {
+						operator[](l)[n][w] += _add[l][n][w];
+					}
+				}
+			}
+
+			return *this;
+		}
+
 		
 		/*
 		 * Scalar multiply weight gradients.
@@ -222,6 +265,21 @@ public:
 
 			return output;
 		}
+
+		/*
+		 * In place scalar multiply weight gradients.
+		 */
+		ModelWeightGradients &operator*=(const value_t &_add) {
+			for (GMath::size_t l = 0; l < Size(); l++) {
+				for (GMath::size_t n = 0; n < operator[](l).Size(); n++) {
+					for (GMath::size_t w = 0; w < operator[](l)[n].Size(); w++) {
+						operator[](l)[n][w] *= _add;
+					}
+				}
+			}
+
+			return *this;
+		}
 	};
 
 	class ModelBiasGradients {
@@ -237,6 +295,24 @@ public:
 			for (GMath::size_t l = 0; l < m_gradients.Size(); l++) {
 				m_gradients[l].Resize(_layers[l].Size());
 			}
+		}
+
+		/*
+		 * Check if structure is set up.
+		 */
+		[[nodiscard]]
+		bool IsSetup(const GMath::DynamicArray<Layer<value_t>> &_layers) const {
+			if (m_gradients.Size() != _layers.Size()) {
+				return false;
+			}
+
+			for (GMath::size_t l = 0; l < m_gradients.Size(); l++) {
+				if (m_gradients[l].Size() != _layers[l].Size()) {
+					return false;
+				}
+			}
+
+			return true;
 		}
 
 		/*
@@ -307,6 +383,23 @@ public:
 			return output;
 		}
 
+		/*
+		 * In place add bias gradients.
+		 */
+		ModelBiasGradients &operator+=(const ModelBiasGradients &_add) {
+			// if (!HasSameDimentions(_add)) {
+			// 	throw ModelError("Add gradients does not have the correct dimentions.");
+			// }
+
+			for (GMath::size_t l = 0; l < Size(); l++) {
+				for (GMath::size_t n = 0; n < operator[](l).Size(); n++) {
+					operator[](l)[n] += _add[l][n];
+				}
+			}
+
+			return *this;
+		}
+
 		
 		/*
 		 * Scalar multiply bias gradients.
@@ -322,6 +415,19 @@ public:
 			}
 
 			return output;
+		}
+
+		/*
+		 * In place scalar multiply bias gradients.
+		 */
+		ModelBiasGradients &operator*=(const value_t &_add) {
+			for (GMath::size_t l = 0; l < Size(); l++) {
+				for (GMath::size_t n = 0; n < operator[](l).Size(); n++) {
+					operator[](l)[n] *= _add;
+				}
+			}
+
+			return *this;
 		}
 	};
 
@@ -348,10 +454,37 @@ public:
 			ModelGradients output = _gradients[0];
 
 			for (GMath::size_t g = 1; g < _gradients.Size(); g++) {
-				output = output + _gradients[g];
+				output += _gradients[g];
 			}
 
-			output = output * ((value_t)1.00/_gradients.Size());
+			output *= ((value_t)1.00/_gradients.Size());
+
+			return output;
+		}
+
+		/*
+		 * Returns the average of all of the gradients.
+		 */
+		static ModelGradients Average(const GMath::DynamicArray<ModelGradients> &_gradients, const GMath::size_t &_startIndex, const GMath::size_t &_count) {
+			// if (_gradients.Size() < 1) {
+			// 	throw ModelError("No gradients given.");
+			// }
+			//
+			// for (GMath::size_t g = 0; g < _gradients.Size(); g++) {
+			// 	const ModelGradients &currentGradients = _gradients[g];
+			//
+			// 	if (!currentGradients.StructuresMatch()) {
+			// 		throw ModelError("Internal structure dimentions don't match.");
+			// 	}
+			// }
+
+			ModelGradients output = _gradients[_startIndex];
+
+			for (GMath::size_t g = _startIndex; g < _startIndex + _count; g++) {
+				output += _gradients[g];
+			}
+
+			output *= ((value_t)1.00/_gradients.Size());
 
 			return output;
 		}
@@ -362,6 +495,14 @@ public:
 		void Setup(const GMath::DynamicArray<Layer<value_t>> &_layers) {
 			weights.Setup(_layers);
 			biases.Setup(_layers);
+		}
+
+		/*
+		 * Check if structure is setup.
+		 */
+		[[nodiscard]]
+		bool IsSetup(const GMath::DynamicArray<Layer<value_t>> &_layers) const {
+			return weights.IsSetup(_layers) && biases.IsSetup(_layers);
 		}
 
 		/*
@@ -442,6 +583,16 @@ public:
 			return output;
 		}
 
+		/*
+		 * In place add gradients.
+		 */
+		ModelGradients &operator+=(const ModelGradients &_add) {
+			weights += _add.weights;
+			biases += _add.biases;
+
+			return *this;
+		}
+
 
 		/*
 		 * Scalar multiply gradients.
@@ -453,6 +604,16 @@ public:
 			output.biases = biases * _add;
 
 			return output;
+		}
+
+		/*
+		 * In place scalar multiply gradients.
+		 */
+		ModelGradients &operator*=(const value_t &_add) {
+			weights *= _add;
+			biases *= _add;
+
+			return *this;
 		}
 	};
 
@@ -639,6 +800,7 @@ public:
 	/*
 	 * Add the weights and biases of another model.
 	 */
+	[[nodiscard]]
 	Model operator+(const Model &_addModel) const {
 		try {
 			_Check();
@@ -650,7 +812,7 @@ public:
 			throw ModelError("Models use different loss functions");
 		}
 
-		if (Inputs() != _addModel.Inputs()) {
+		if (InputCount() != _addModel.InputCount()) {
 			throw ModelError("Model input counts not the same.");
 		}
 
@@ -691,6 +853,7 @@ public:
 	/*
 	 * Subtract the weights and biases of another model.
 	 */
+	[[nodiscard]]
 	Model operator-(const Model &_subtractModel) const {
 		try {
 			_Check();
@@ -702,7 +865,7 @@ public:
 			throw ModelError("Models use different loss functions");
 		}
 
-		if (Inputs() != _subtractModel.Inputs()) {
+		if (InputCount() != _subtractModel.InputCount()) {
 			throw ModelError("Model input counts not the same.");
 		}
 
@@ -744,6 +907,7 @@ public:
 	/*
 	 * Multiply the weights and biases with a factor.
 	 */
+	[[nodiscard]]
 	Model operator*(const value_t &_factor) const {
 		try {
 			_Check();
@@ -753,7 +917,7 @@ public:
 
 		Model output = *this;
 
-		for (GMath::size_t l = 0; l < Layers(); l++) {
+		for (GMath::size_t l = 0; l < LayerCount(); l++) {
 			for (GMath::size_t n = 0; n < m_layers[l].Size(); n++) {
 				auto oldBias = output.m_layers[l].GetBias(n);
 				output.m_layers[l].SetBias(oldBias * _factor, n);
@@ -771,6 +935,7 @@ public:
 	/*
 	 * Divide the weights and biases with a factor.
 	 */
+	[[nodiscard]]
 	Model operator/(const value_t &_factor) const {
 		try {
 			_Check();
@@ -780,7 +945,7 @@ public:
 
 		Model output = *this;
 
-		for (GMath::size_t l = 0; l < Layers(); l++) {
+		for (GMath::size_t l = 0; l < LayerCount(); l++) {
 			for (GMath::size_t n = 0; n < m_layers[l].Size(); n++) {
 				auto oldBias = output.m_layers[l].GetBias(n);
 				output.m_layers[l].SetBias(oldBias / _factor, n);
@@ -877,10 +1042,24 @@ public:
 	}
 
 	/*
+	 * Get the internal layers.
+	 */
+	[[nodiscard]]
+	GMath::DynamicArray<Layer<value_t>> Layers() const {
+		try {
+			_Check();
+		} catch (ModelError &_modelError) {
+			throw ModelError("Model checks failed - \n" + (std::string)_modelError.what());
+		}
+
+		return m_layers;
+	}
+
+	/*
 	 * Get the amount of layers in the model.
 	 */
 	[[nodiscard]]
-	GMath::size_t Layers() const {
+	GMath::size_t LayerCount() const {
 		try {
 			_Check();
 		} catch (ModelError &_modelError) {
@@ -894,7 +1073,7 @@ public:
 	 * Get the amount of inputs the model supports.
 	 */
 	[[nodiscard]]
-	GMath::size_t Inputs() const {
+	GMath::size_t InputCount() const {
 		try {
 			_Check();
 		} catch (ModelError &_modelError) {
@@ -907,14 +1086,14 @@ public:
 	/*
 	 * Get the amount of outputs the model supports.
 	 */
-	GMath::size_t Outputs() const {
+	GMath::size_t OutputCount() const {
 		try {
 			_Check();
 		} catch (ModelError &_modelError) {
 			throw ModelError("Model checks failed - \n" + (std::string)_modelError.what());
 		}
 
-		return m_layers[Layers() - 1].Size();
+		return m_layers[LayerCount() - 1].Size();
 	}
 
 	/*
@@ -929,7 +1108,7 @@ public:
 
 		GMath::DynamicArray<GMath::size_t> output;
 
-		for (GMath::size_t l = 0; l < Layers(); l++) {
+		for (GMath::size_t l = 0; l < LayerCount(); l++) {
 			output.PushBack(m_layers[l].Size());
 		}
 
@@ -950,7 +1129,7 @@ public:
 			throw ModelError("Inputs is not a row matrix.");
 		}
 
-		if (_inputs.Shape().Columns != Inputs()) {
+		if (_inputs.Shape().Columns != InputCount()) {
 			throw ModelError("Inputs size does not match inputs amount.");
 		}
 
@@ -958,7 +1137,7 @@ public:
 			throw ModelError("Expected outputs is not a row matrix.");
 		}
 
-		if (_expected.Shape().Columns != Outputs()) {
+		if (_expected.Shape().Columns != OutputCount()) {
 			throw ModelError("Expected outputs size does not match model outputs size.");
 		}
 
@@ -997,7 +1176,7 @@ public:
 			throw ModelError("Inputs are not a row matrix.");
 		}
 
-		if (_inputs.Shape().Columns != Inputs()) {
+		if (_inputs.Shape().Columns != InputCount()) {
 			throw ModelError("Inputs size does not match inputs amount.");
 		}
 
@@ -1028,7 +1207,7 @@ public:
 			throw ModelError("Inputs are not a row matrix.");
 		}
 
-		if (_inputs.Shape().Columns != Inputs()) {
+		if (_inputs.Shape().Columns != InputCount()) {
 			throw ModelError("Inputs size does not match inputs amount.");
 		}
 
@@ -1036,7 +1215,7 @@ public:
 			throw ModelError("Expected outputs are not a row matrix.");
 		}
 
-		if (_expectedOutputs.Shape().Columns != Outputs()) {
+		if (_expectedOutputs.Shape().Columns != OutputCount()) {
 			throw ModelError("Expected outputs size does not match model output size.");
 		}
 
@@ -1074,6 +1253,8 @@ public:
 	/*
 	 * Calculate the model parameter gradients.
 	 */
+	[[deprecated("Slow. Copying instead of using a reference.")]]
+	[[nodiscard]]
 	Model<value_t>::ModelGradients BackPropagate(const GMath::Matrix<value_t> &_inputs, const GMath::Matrix<value_t> &_expectedOutputs) const {
 		try {
 			_Check();
@@ -1085,7 +1266,7 @@ public:
 			throw ModelError("Inputs are not a row matrix.");
 		}
 
-		if (_inputs.Shape().Columns != Inputs()) {
+		if (_inputs.Shape().Columns != InputCount()) {
 			throw ModelError("Inputs size does not match inputs amount.");
 		}
 
@@ -1093,7 +1274,7 @@ public:
 			throw ModelError("Expected outputs are not a row matrix.");
 		}
 
-		if (_expectedOutputs.Shape().Columns != Outputs()) {
+		if (_expectedOutputs.Shape().Columns != OutputCount()) {
 			throw ModelError("Expected outputs size does not match model output size.");
 		}
 
@@ -1114,20 +1295,151 @@ public:
 					for (GMath::size_t i = 0; i < currentLayer.Inputs(); i++) {
 						auto weightSlope = currentLayer.WeightSlope(gradients[l][n], _inputs, i);
 						output.weights[l][n][i] = weightSlope;
-						// currentLayer.SetWeight(currentLayer.GetWeight(n, i) - weightSlope * _learningRate, n, i);
 					}
 				}
 				else {
 					for (GMath::size_t i = 0; i < currentLayer.Inputs(); i++) {
 						auto weightSlope = currentLayer.WeightSlope(gradients[l][n], activatedOutputs[l - 1], i);
 						output.weights[l][n][i] = weightSlope;
-						// currentLayer.SetWeight(currentLayer.GetWeight(n, i) - weightSlope * _learningRate, n, i);
 					}
 				}
 			}
 		}
 
 		return output;
+	}
+
+	/*
+	 * Calculate the model parameter gradients.
+	 */
+	// void BackPropagate(Model<value_t>::ModelGradients &_gradients, const GMath::Matrix<value_t> &_inputs, const GMath::Matrix<value_t> &_expectedOutputs) const {
+	// 	try {
+	// 		_Check();
+	// 	} catch (...) {
+	// 		throw ModelError("Model checks failed.");
+	// 	}
+	//
+	// 	if (!_inputs.IsRowMatrix()) {
+	// 		throw ModelError("Inputs are not a row matrix.");
+	// 	}
+	//
+	// 	if (_inputs.Shape().Columns != InputCount()) {
+	// 		throw ModelError("Inputs size does not match inputs amount.");
+	// 	}
+	//
+	// 	if (!_expectedOutputs.IsRowMatrix()) {
+	// 		throw ModelError("Expected outputs are not a row matrix.");
+	// 	}
+	//
+	// 	if (_expectedOutputs.Shape().Columns != OutputCount()) {
+	// 		throw ModelError("Expected outputs size does not match model output size.");
+	// 	}
+	//
+	// 	if (!_gradients.IsSetup(m_layers)) {
+	// 		throw ModelError("Model gradients doesn't match model dimentions.");
+	// 	}
+	//
+	// 	ModelStructure unactivatedOutputs = _SetupModelStructure(), activatedOutputs = _SetupModelStructure(), gradients = _SetupModelStructure();
+	// 	_OutputStructures(_inputs, unactivatedOutputs, activatedOutputs);
+	// 	_PopulateUnactivatedGradientStructure(gradients, activatedOutputs, unactivatedOutputs, _expectedOutputs);
+	//
+	// 	for (GMath::size_t l = 0; l < m_layers.Size(); l++) {
+	// 		const Layer<value_t> &currentLayer = m_layers[l];
+	//
+	// 		for (GMath::size_t n = 0; n < currentLayer.Size(); n++) {
+	// 			auto biasSlope = currentLayer.BiasSlope(gradients[l][n]);
+	// 			_gradients.biases[l][n] = biasSlope;
+	//
+	// 			if (l == 0) {
+	// 				for (GMath::size_t i = 0; i < currentLayer.Inputs(); i++) {
+	// 					auto weightSlope = currentLayer.WeightSlope(gradients[l][n], _inputs, i);
+	// 					_gradients.weights[l][n][i] = weightSlope;
+	// 				}
+	// 			}
+	// 			else {
+	// 				for (GMath::size_t i = 0; i < currentLayer.Inputs(); i++) {
+	// 					auto weightSlope = currentLayer.WeightSlope(gradients[l][n], activatedOutputs[l - 1], i);
+	// 					_gradients.weights[l][n][i] = weightSlope;
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
+
+	/*
+	 * Calculate the model parameter gradients.
+	 */
+	void BackPropagate(Model<value_t>::ModelGradients &_gradients, const GMath::Matrix<value_t> &_inputs, const GMath::Matrix<value_t> &_expectedOutputs) const {
+		try {
+			_Check();
+		} catch (...) {
+			throw ModelError("Model checks failed.");
+		}
+
+		if (!_inputs.IsRowMatrix()) {
+			throw ModelError("Inputs are not a row matrix.");
+		}
+
+		if (_inputs.Shape().Columns != InputCount()) {
+			throw ModelError("Inputs size does not match inputs amount.");
+		}
+
+		if (!_expectedOutputs.IsRowMatrix()) {
+			throw ModelError("Expected outputs are not a row matrix.");
+		}
+
+		if (_expectedOutputs.Shape().Columns != OutputCount()) {
+			throw ModelError("Expected outputs size does not match model output size.");
+		}
+
+		if (!_gradients.IsSetup(m_layers)) {
+			throw ModelError("Model gradients doesn't match model dimentions.");
+		}
+
+		const GMath::size_t THREAD_COUNT = std::thread::hardware_concurrency() > 1 ? std::thread::hardware_concurrency() : 1;
+		const GMath::size_t BATCH_SIZE = std::ceil((value_t)m_layers.Size() / THREAD_COUNT);
+		GMath::DynamicArray<std::future<void>> threads(THREAD_COUNT);
+
+		ModelStructure unactivatedOutputs = _SetupModelStructure(), activatedOutputs = _SetupModelStructure(), unactivatedGradients = _SetupModelStructure();
+		_OutputStructures(_inputs, unactivatedOutputs, activatedOutputs);
+		_PopulateUnactivatedGradientStructure(unactivatedGradients, activatedOutputs, unactivatedOutputs, _expectedOutputs);
+
+		const auto threadFunc = [](Model<value_t>::ModelGradients &_gradients, const GMath::size_t &_batchIndex, const GMath::size_t &_batchCount, const GMath::DynamicArray<Layer<value_t>> &_layers, const GMath::Matrix<value_t> &_inputs, const ModelStructure &_activatedOutputs, const ModelStructure &_unactivatedGradients) {
+			for (GMath::size_t l = _batchIndex; l < _batchIndex + _batchCount && l < _layers.Size(); l++) {
+				const Layer<value_t> &currentLayer = _layers[l];
+
+				for (GMath::size_t n = 0; n < currentLayer.Size(); n++) {
+					auto biasSlope = currentLayer.BiasSlope(_unactivatedGradients[l][n]);
+					_gradients.biases[l][n] = biasSlope;
+
+					if (l == 0) {
+						for (GMath::size_t i = 0; i < currentLayer.Inputs(); i++) {
+							auto weightSlope = currentLayer.WeightSlope(_unactivatedGradients[l][n], _inputs, i);
+							_gradients.weights[l][n][i] = weightSlope;
+						}
+					}
+					else {
+						for (GMath::size_t i = 0; i < currentLayer.Inputs(); i++) {
+							auto weightSlope = currentLayer.WeightSlope(_unactivatedGradients[l][n], _activatedOutputs[l - 1], i);
+							_gradients.weights[l][n][i] = weightSlope;
+						}
+					}
+				}
+			}
+		};
+
+		if (m_layers.Size() > THREAD_COUNT * 2) {
+			for (GMath::size_t t = 0; t < THREAD_COUNT; t++) {
+				threads[t] = std::async(std::launch::async, threadFunc, std::ref(_gradients), t * BATCH_SIZE, BATCH_SIZE, std::ref(m_layers), std::ref(_inputs), std::ref(activatedOutputs), std::ref(unactivatedGradients));
+			}
+
+			for (GMath::size_t t = 0; t < THREAD_COUNT; t++) {
+				threads[t].get();
+			}
+		}
+		else {
+			threadFunc(_gradients, 0, m_layers.Size(), m_layers, _inputs, activatedOutputs, unactivatedGradients);
+		}
 	}
 
 	/*
@@ -1140,20 +1452,8 @@ public:
 			throw ModelError("Model checks failed.");
 		}
 
-		if (_gradients.Layers() != Layers()) {
-			throw ModelError("Gradients don't match model layer count.");
-		}
-
-		for (GMath::size_t l = 0; l < _gradients.Layers(); l++) {
-			if (_gradients.Neurons(l) != m_layers[l].Size()) {
-				throw ModelError("Gradients don't match model neuron count.");
-			}
-
-			for (GMath::size_t n = 0; n < _gradients.Neurons(l); n++) {
-				if (_gradients.Weights(l, n) != m_layers[l].Inputs()) {
-					throw ModelError("Gradients don't match model weight count.");
-				}
-			}
+		if (!_gradients.IsSetup(m_layers)) {
+			throw ModelError("Gradients don't match model dimentions.");
 		}
 
 		for (GMath::size_t l = 0; l < _gradients.Layers(); l++) {
@@ -1172,32 +1472,21 @@ public:
 	/*
 	 * Use multiple gradients to optimize model.
 	 */
+	[[deprecated("Use GNeuro::Model<value_t>::ModelGradients::Average instead.")]]
 	void Optimize(const GMath::DynamicArray<ModelGradients> &_gradients, const value_t &_learningRate) {
 		try {
 			_Check();
 		} catch (...) {
 			throw ModelError("Model checks failed.");
 		}
-		
+
 		if (_gradients.Size() < 1) {
 			throw ModelError("No gradients provided.");
 		}
 		
 		for (GMath::size_t m = 0; m < _gradients.Size(); m++) {
-			if (_gradients[m].Layers() != Layers()) {
-				throw ModelError("Gradients don't match model layer count.");
-			}
-
-			for (GMath::size_t l = 0; l < _gradients[m].Layers(); l++) {
-				if (_gradients[m].Neurons(l) != m_layers[l].Size()) {
-					throw ModelError("Gradients don't match model neuron count.");
-				}
-
-				for (GMath::size_t n = 0; n < _gradients[m].Neurons(l); n++) {
-					if (_gradients[m].Weights(l, n) != m_layers[l].Inputs()) {
-						throw ModelError("Gradients don't match model weight count.");
-					}
-				}
+			if (!_gradients[m].IsSetup(m_layers)) {
+				throw ModelError("Gradients don't match model dimentions.");
 			}
 		}
 

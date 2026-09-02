@@ -495,17 +495,14 @@ public:
 			throw LayerError("Layer inputs size does not match input count.");
 		}
 
-		GMath::Matrix<value_t> weightSlopes;
+		GMath::Matrix<value_t> weightSlopes({Size(), _layerInputs.Shape().Columns});
 
 		try {
+
 			for (GMath::size_t n = 0; n < Size(); n++) {
-				GMath::DynamicArray<value_t> weightBatch;
-
 				for (GMath::size_t w = 0; w < _layerInputs.Shape().Columns; w++) {
-					weightBatch.PushBack(WeightSlope(_unactivatedSlopes[0][n], _layerInputs, w));
+					weightSlopes[n][w] = WeightSlope(_unactivatedSlopes[0][n], _layerInputs, w);
 				}
-
-				weightSlopes.AppendRow(weightBatch);
 			}
 		} catch (...) {
 			throw LayerError("Failed to get weight slopes.");
@@ -573,7 +570,6 @@ public:
 	 */
 	[[nodiscard]]
 	GMath::Matrix<value_t> InputSlopes(const GMath::Matrix<value_t> &_unactivatedSlopes) const {
-		GMath::Matrix<value_t> inputSlopes;
 
 		if (!_unactivatedSlopes.IsRowMatrix()) {
 			throw LayerError("Unactivated slopes is not a row matrix.");
@@ -583,15 +579,13 @@ public:
 			throw LayerError("Unactivated slopes is not the size of the layer.");
 		}
 
+		GMath::Matrix<value_t> inputSlopes({Size(), Inputs()});
+
 		try {
-			for (GMath::size_t n = 0; n < Size(); n++) {
-				GMath::DynamicArray<value_t> inputBatch;
-
-				for (GMath::size_t i = 0; i < Inputs(); i++) {
-					inputBatch.PushBack(InputSlope(_unactivatedSlopes[0][n], n, i));
+			for (GMath::size_t n = 0; n < inputSlopes.Shape().Rows; n++) {
+				for (GMath::size_t i = 0; i < inputSlopes.Shape().Columns; i++) {
+					inputSlopes[n][i] = InputSlope(_unactivatedSlopes[0][n], n, i);
 				}
-
-				inputSlopes.AppendRow(inputBatch);
 			}
 
 			// return _unactivatedSlope * GetWeight(_neuronIndex, _inputIndex);

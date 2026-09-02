@@ -1,5 +1,6 @@
 #pragma once
 #include "GNeuro/Model.hpp"
+#include <chrono>
 #include <future>
 #include <stdexcept>
 #include <thread>
@@ -25,28 +26,62 @@ private:
 	/*
 	 * Train a batch.
 	 */
-	void _TrainBatch(const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches, const value_t &_learningRate) {
-		const GMath::size_t BATCH_COUNT = _inputBatches.Shape().Rows;
-		const GMath::size_t THREAD_COUNT = std::thread::hardware_concurrency();
-		
-		GMath::DynamicArray<typename Model<value_t>::ModelGradients> gradients;
-		GMath::DynamicArray<std::future<typename Model<value_t>::ModelGradients>> threads(THREAD_COUNT);
+	void _TrainBatch(const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches, value_t &_learningRate, const bool _useRandomBatching) {
+		const GMath::size_t SAMPLE_COUNT = _inputBatches.Shape().Rows;
+		const GMath::size_t THREAD_COUNT = std::thread::hardware_concurrency() > 1 ? std::thread::hardware_concurrency() : 1;
 
-		const auto threadFunc = [](const GNeuro::Model<value_t> &_model, const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches) {
-			return _model.BackPropagate(_inputBatches, _expectedOutputBatches);
+		GMath::size_t RANDOM_OFFSET = 0;
+		if (_useRandomBatching) {
+			RANDOM_OFFSET = GMath::Random(0.00, (double)SAMPLE_COUNT);
+		}
+
+		GMath::DynamicArray<typename Model<value_t>::ModelGradients> gradients(THREAD_COUNT);
+		GMath::DynamicArray<std::future<void>> threads(THREAD_COUNT);
+
+		const auto threadFunc = [](const GNeuro::Model<value_t> &_model, typename GNeuro::Model<value_t>::ModelGradients &_gradients, const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches) {
+			_model.BackPropagate(_gradients, _inputBatches, _expectedOutputBatches);
 		};
 
-		for (GMath::size_t i = 0; i < BATCH_COUNT; i += THREAD_COUNT) {
-			for (GMath::size_t j = 0; j < THREAD_COUNT && i + j < BATCH_COUNT; j++) {
-				threads[j] = std::async(std::launch::async, threadFunc, m_model, _inputBatches[i + j], _expectedOutputBatches[i + j]);
+		for (GMath::size_t i = 0; i < gradients.Size(); i++) { gradients[i].Setup(m_model.Layers()); }
+
+		for (GMath::size_t i = 0; i < SAMPLE_COUNT; i += THREAD_COUNT) {
+			GMath::size_t gradientsPopulated = 0;
+
+			for (GMath::size_t t = 0; t < THREAD_COUNT && i + t < SAMPLE_COUNT; t++) {
+				GMath::size_t sampleIndex = (RANDOM_OFFSET + i + t) % SAMPLE_COUNT;
+				threads[t] = std::async(std::launch::async, threadFunc, m_model, std::ref(gradients[t]), _inputBatches[sampleIndex], _expectedOutputBatches[sampleIndex]);
 			}
 
-			for (GMath::size_t j = 0; j < THREAD_COUNT && i + j < BATCH_COUNT; j++) {
-				std::future<typename Model<value_t>::ModelGradients> &thread = threads[j];
-				gradients.EmplaceBack(std::move(thread.get()));
+			for (GMath::size_t j = 0; j < THREAD_COUNT && i + j < SAMPLE_COUNT; j++) {
+				auto &thread = threads[j];
+				thread.get();
+
+				if (i + j == SAMPLE_COUNT - 1) {
+					gradientsPopulated = j + 1;	
+				}
+				else if (j == THREAD_COUNT - 1) {
+					gradientsPopulated = j + 1;	
+				}
 			}
 
-			m_model.Optimize(gradients, _learningRate);
+			auto g = GNeuro::Model<value_t>::ModelGradients::Average(gradients, 0, gradientsPopulated);
+			auto deltaLoss = BatchMeanLoss(_inputBatches, _expectedOutputBatches);
+			m_model.Optimize(g, _learningRate);
+			auto newLoss = BatchMeanLoss(_inputBatches, _expectedOutputBatches);
+			deltaLoss = (newLoss - deltaLoss) / (newLoss);
+
+			if (deltaLoss > 0) {
+				_learningRate = _learningRate * (1 - (deltaLoss));
+			} else if (deltaLoss > -0.00001) {
+				_learningRate = _learningRate * (1 - deltaLoss);
+			}
+
+			if (_learningRate > 100) {
+				_learningRate = 100;
+			}
+			else if (_learningRate < 0.000001) {
+				_learningRate = 0.000001;
+			}
 		}
 	}
 
@@ -96,7 +131,7 @@ public:
 			throw NetworkError("No inputs given.");
 		}
 
-		if (_inputBatches.Shape().Columns != m_model.Inputs()) {
+		if (_inputBatches.Shape().Columns != m_model.InputCount()) {
 			throw NetworkError("Input batches sample size does not match model input amount.");
 		}
 
@@ -135,7 +170,7 @@ public:
 	 */
 	[[deprecated("Edit GetModel() and readd with SetModel()")]]
 	void RemoveLayer(const GMath::size_t _index) {
-		if (_index < 1 || _index >= m_model.Layers()) {
+		if (_index < 1 || _index >= m_model.LayerCount()) {
 			throw NetworkError("Index out of bounds.");	
 		}
 
@@ -153,7 +188,7 @@ public:
 			throw NetworkError("No input batches given.");
 		}
 
-		if (_inputBatches.Shape().Columns != m_model.Inputs()) {
+		if (_inputBatches.Shape().Columns != m_model.InputCount()) {
 			throw NetworkError("Input amount does not match model.");
 		}
 
@@ -167,17 +202,21 @@ public:
 	/*
 	 * Train the model on input batches for [_epochCount] epochs.
 	 */
-	void Train(const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches, const value_t &_learningRate, const GMath::size_t &_epochCount) {
+	void Train(const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches, const value_t &_learningRate, const GMath::size_t &_epochCount, const bool _useRandomBatching = true) {
 		if (_inputBatches.Shape().Rows != _expectedOutputBatches.Shape().Rows) {
 			throw NetworkError("Input batch count does not match output batch count.");
 		}
 
-		if (_inputBatches.Shape().Columns != m_model.Inputs()) {
+		if (_inputBatches.Shape().Columns != m_model.InputCount()) {
 			throw NetworkError("Input amount does not match model.");
 		}
 
 		if (_inputBatches.Shape().Rows < 1) {
 			throw NetworkError("No input batches provided.");
+		}
+
+		if (_expectedOutputBatches.Shape().Columns != m_model.OutputCount()) {
+			throw NetworkError("Expected output batch size not corresponding to model output count.");
 		}
 
 		if (_epochCount < 1) {
@@ -189,8 +228,9 @@ public:
 		}
 
 
+		value_t learningRate = _learningRate;
 		for (GMath::size_t i = 0; i < _epochCount; i++) {
-			_TrainBatch(_inputBatches, _expectedOutputBatches, _learningRate);
+			_TrainBatch(_inputBatches, _expectedOutputBatches, learningRate, _useRandomBatching);
 
 			std::cout << "Epoch: " << i << std::endl;
 			std::cout << "\x1b[1F";
@@ -202,17 +242,21 @@ public:
 	/*
 	 * Train the model on input batches until [_lossThreshold] batch mean loss is reached.
 	 */
-	void Train(const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches, const value_t &_learningRate, const value_t _lossThreshold, std::atomic<bool> &_running) {
+	void Train(const GMath::Matrix<value_t> &_inputBatches, const GMath::Matrix<value_t> &_expectedOutputBatches, const value_t &_learningRate, const value_t _lossThreshold, std::atomic<bool> &_running, const bool _useRandomBatching = true) {
 		if (_inputBatches.Shape().Rows != _expectedOutputBatches.Shape().Rows) {
 			throw NetworkError("Input batch count does not match output batch count.");
 		}
 
-		if (_inputBatches.Shape().Columns != m_model.Inputs()) {
+		if (_inputBatches.Shape().Columns != m_model.InputCount()) {
 			throw NetworkError("Input amount does not match model.");
 		}
 
 		if (_inputBatches.Shape().Rows < 1) {
 			throw NetworkError("No input batches given.");
+		}
+
+		if (_expectedOutputBatches.Shape().Columns != m_model.OutputCount()) {
+			throw NetworkError("Expected output batch size not corresponding to model output count.");
 		}
 
 		if (_learningRate <= 0) {
@@ -225,15 +269,19 @@ public:
 
 		value_t loss = 0;
 
+		value_t learningRate = _learningRate;
 		do {
-			_TrainBatch(_inputBatches, _expectedOutputBatches, _learningRate);
+			_TrainBatch(_inputBatches, _expectedOutputBatches, learningRate, _useRandomBatching);
 
 			loss = BatchMeanLoss(_inputBatches, _expectedOutputBatches);
 
 			std::cout << "Mean Loss: " << loss << std::endl;
-			std::cout << "\x1b[1F";
+			std::cout << "Learning rate: " << learningRate << std::endl;
+			std::cout << "\x1b[2F";
+
 		} while (loss > _lossThreshold && _running);
 
+		std::cout << std::endl;
 		std::cout << std::endl;
 	}
 };
