@@ -48,7 +48,7 @@ private:
 		}
 
 		for (GMath::size_t i = 1; i < biasesCount; i++) {
-			const GMath::DynamicArray<value_t> &row = m_weights[i];
+			const auto &row = m_weights[i];
 
 			if (row.Size() != inputCount) {
 				throw LayerError("Weight set " + std::to_string(i) + " doesn't match input count of " + std::to_string(inputCount));
@@ -61,7 +61,9 @@ private:
 	 */
 	[[nodiscard]]
 	GMath::Matrix<value_t> _CalculateUnactivated(const GMath::Matrix<value_t> &_inputs) const noexcept {
-		GMath::Matrix<value_t> unactivatedOutputs = (_inputs * m_weights.Transpose()) + m_biases;
+		auto transposedWeights = m_weights;
+		transposedWeights.Transpose();
+		GMath::Matrix<value_t> unactivatedOutputs = (_inputs * transposedWeights) + m_biases;
 		return unactivatedOutputs;
 		GMath::Matrix<value_t> activatedOutputs { unactivatedOutputs.Shape() };
 
