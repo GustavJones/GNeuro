@@ -1,5 +1,6 @@
 #pragma once
 #include "FunctionType.hpp"
+#include "GMath/DynamicArray.hpp"
 #include "Layer.hpp"
 #include "GParsing/JSON/GParsing-JSON.hpp"
 #include <future>
@@ -678,16 +679,16 @@ private:
 		const Layer<value_t> &firstLayer = m_layers[0];
 		GMath::Matrix<value_t> unactivated = firstLayer.CalculateUnactivated(_inputs);
 		GMath::Matrix<value_t> activated = firstLayer.CalculateActivated(unactivated);
-		_unactivated[0] = unactivated[0];
-		_activated[0] = activated[0];
+		_unactivated[0] = (GMath::DynamicArray<value_t>)unactivated[0];
+		_activated[0] = (GMath::DynamicArray<value_t>)activated[0];
 
 		for (GMath::size_t l = 1; l < m_layers.Size(); l++) {
 			const Layer<value_t> &layer = m_layers[l];
 			unactivated = layer.CalculateUnactivated(activated);
 			activated = layer.CalculateActivated(unactivated);
 
-			_unactivated[l] = unactivated[0];
-			_activated[l] = activated[0];
+			_unactivated[l] = (GMath::DynamicArray<value_t>)unactivated[0];
+			_activated[l] = (GMath::DynamicArray<value_t>)activated[0];
 		}
 	}
 
@@ -704,7 +705,7 @@ private:
 			gradients[0][n] *= activationGradients[0][n];
 		}
 
-		_structure[_structure.GetLayerCount() - 1] = gradients[0];
+		_structure[_structure.GetLayerCount() - 1] = (GMath::DynamicArray<value_t>)gradients[0];
 
 		// All other layers
 		for (int64_t l = static_cast<int64_t>(m_layers.Size()) - 2; l >= 0; l--) {
@@ -719,7 +720,7 @@ private:
 				gradients[0][i] *= previousLayerInputSlopeSum;
 			}
 
-			_structure[l] = gradients[0];
+			_structure[l] = (GMath::DynamicArray<value_t>)gradients[0];
 		}
 	}
 
@@ -1420,7 +1421,7 @@ public:
 					}
 					else {
 						for (GMath::size_t i = 0; i < currentLayer.Inputs(); i++) {
-							auto weightSlope = currentLayer.WeightSlope(_unactivatedGradients[l][n], _activatedOutputs[l - 1], i);
+							auto weightSlope = currentLayer.WeightSlope(_unactivatedGradients[l][n], (GMath::MatrixRow<value_t>)_activatedOutputs[l - 1], i);
 							_gradients.weights[l][n][i] = weightSlope;
 						}
 					}

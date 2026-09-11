@@ -1,4 +1,5 @@
 #pragma once
+#include "GMath/DynamicArray.hpp"
 #include "GNeuro/Model.hpp"
 #include <chrono>
 #include <future>
@@ -193,7 +194,7 @@ public:
 		}
 
 		for (GMath::size_t i = 0; i < _inputBatches.Shape().Rows; i++) {
-			output = output.AppendRow(m_model.FeedForward(_inputBatches[i])[0]);
+			output.AppendRow((GMath::DynamicArray<value_t>)m_model.FeedForward(_inputBatches[i])[0]);
 		}
 
 		return output;
