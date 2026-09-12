@@ -73,7 +73,7 @@ private:
 
 			if (deltaLoss > 0) {
 				_learningRate = _learningRate * (1 - (deltaLoss));
-			} else if (deltaLoss > -0.00001) {
+			} else if (deltaLoss > -0.00005) {
 				_learningRate = _learningRate * (1 - deltaLoss);
 			}
 
